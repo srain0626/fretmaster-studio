@@ -1,6 +1,7 @@
 'use client';
 
 import React, { useMemo, useState } from 'react';
+import Link from 'next/link';
 import { motion } from 'framer-motion';
 import { Button } from '@/components/ui/button';
 import {
@@ -20,25 +21,37 @@ import {
   localizeModule,
 } from '@/data/curriculumData';
 import { useLocale, type LocalePreference } from '@/lib/i18n';
+import type { SyncStatus } from '@/lib/progressSync';
+import type { ThemePreference } from '@/lib/theme';
 import type { Lesson, PhaseId, UserProgressState } from '@/types/guitar';
 import {
   BarChart3,
   BookOpen,
   CheckCircle2,
   ChevronRight,
+  Cloud,
+  CloudOff,
   Compass,
   Ear,
   Grid,
   Languages,
   Lock,
+  LogOut,
   Monitor,
   Moon,
   Radio,
+  RefreshCw,
   Sun,
   Unlock,
 } from 'lucide-react';
 
-export type ThemePreference = 'system' | 'light' | 'dark';
+export type { ThemePreference };
+
+export interface SidebarUserSummary {
+  email?: string | null;
+  name?: string | null;
+  avatarUrl?: string | null;
+}
 
 interface CurriculumSidebarProps {
   selectedLessonId: string;
@@ -48,6 +61,9 @@ interface CurriculumSidebarProps {
   onOpenAnalytics: () => void;
   themePreference: ThemePreference;
   onThemeChange: (pref: ThemePreference) => void;
+  user?: SidebarUserSummary | null;
+  syncStatus?: SyncStatus;
+  onSignOut?: () => void;
 }
 
 const PHASE_FILTERS: { id: 'all' | PhaseId; enLabel: string; koLabel: string }[] = [
@@ -66,6 +82,9 @@ export function CurriculumSidebar({
   onOpenAnalytics,
   themePreference,
   onThemeChange,
+  user,
+  syncStatus = 'idle',
+  onSignOut,
 }: CurriculumSidebarProps) {
   const { locale, preference: localePref, setPreference: setLocalePref, tr } = useLocale();
   const [browserOpen, setBrowserOpen] = useState(false);
@@ -157,12 +176,12 @@ export function CurriculumSidebar({
       <aside className="flex flex-col h-full bg-sidebar border-b lg:border-b-0 lg:border-r border-sidebar-border px-3.5 py-4 select-none">
         {/* Minimal Brand Header */}
         <div className="flex items-center justify-between px-2 mb-6">
-          <div className="flex items-center gap-2.5">
+          <Link href="/" className="flex items-center gap-2.5 hover:opacity-85 transition-opacity">
             <BrandFretLogo size={24} />
             <span className="text-base font-bold tracking-tight text-foreground">
               FretMaster
             </span>
-          </div>
+          </Link>
           <div className="flex items-center gap-1 lg:hidden">
             <Button
               type="button"
@@ -190,6 +209,18 @@ export function CurriculumSidebar({
                 <Monitor className="w-3.5 h-3.5" />
               )}
             </Button>
+            {user && onSignOut && (
+              <Button
+                type="button"
+                size="icon-xs"
+                variant="ghost"
+                onClick={onSignOut}
+                className="text-muted-foreground"
+                title={tr('Sign out', '로그아웃')}
+              >
+                <LogOut className="w-3.5 h-3.5" />
+              </Button>
+            )}
           </div>
         </div>
 
@@ -320,8 +351,53 @@ export function CurriculumSidebar({
           </ScrollArea>
         </div>
 
-        {/* Subtle Bottom Language & Theme Selectors (Desktop) */}
-        <div className="hidden lg:flex flex-col gap-2 pt-3 mt-3 border-t border-sidebar-border px-1.5">
+        {/* Subtle Bottom Account Sync + Language & Theme Selectors (Desktop) */}
+        <div className="hidden lg:flex flex-col gap-2.5 pt-3 mt-3 border-t border-sidebar-border px-1.5">
+          {user && (
+            <div className="flex items-center justify-between gap-2 rounded-xl border border-border/80 bg-card/80 px-2.5 py-2">
+              <div className="flex items-center gap-2 min-w-0">
+                <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-accent-soft text-primary text-[11px] font-bold uppercase overflow-hidden border border-border">
+                  {(user.name || user.email || 'U').slice(0, 1)}
+                </div>
+                <div className="min-w-0">
+                  <div className="text-[11.5px] font-semibold text-foreground truncate">
+                    {user.name || user.email || tr('Member', '회원')}
+                  </div>
+                  <div className="flex items-center gap-1 text-[10px] text-muted-foreground">
+                    {syncStatus === 'syncing' ? (
+                      <>
+                        <RefreshCw className="w-2.5 h-2.5 animate-spin text-primary shrink-0" />
+                        <span>{tr('Saving...', '저장 중...')}</span>
+                      </>
+                    ) : syncStatus === 'error' ? (
+                      <>
+                        <CloudOff className="w-2.5 h-2.5 text-destructive shrink-0" />
+                        <span>{tr('Sync paused', '동기화 대기')}</span>
+                      </>
+                    ) : (
+                      <>
+                        <Cloud className="w-2.5 h-2.5 text-primary shrink-0" />
+                        <span>{tr('Cloud synced', '클라우드 저장됨')}</span>
+                      </>
+                    )}
+                  </div>
+                </div>
+              </div>
+              {onSignOut && (
+                <Button
+                  type="button"
+                  size="icon-xs"
+                  variant="ghost"
+                  onClick={onSignOut}
+                  className="text-muted-foreground hover:text-foreground shrink-0"
+                  title={tr('Sign out', '로그아웃')}
+                >
+                  <LogOut className="w-3.5 h-3.5" />
+                </Button>
+              )}
+            </div>
+          )}
+
           <div className="flex items-center justify-between">
             <span className="text-[11px] text-muted-foreground">{tr('Language', '언어')}</span>
             <div className="inline-flex items-center rounded-lg border border-border bg-card p-0.5">

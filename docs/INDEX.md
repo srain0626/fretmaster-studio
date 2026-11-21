@@ -25,6 +25,7 @@
 | Pitch DSP, ASIO bridge, synth engine, judgment tiers, scoring math | [04-AUDIO-DSP.md](04-AUDIO-DSP.md) |
 | Remotion guide animations, cue audio sync, SVG composition rules | [05-ANIMATIONS.md](05-ANIMATIONS.md) |
 | Build/lint commands, Windows PowerShell traps, debugging, QA checklist | [06-MAINTENANCE-RUNBOOK.md](06-MAINTENANCE-RUNBOOK.md) |
+| Public landing page, Supabase Google OAuth, RLS DB schema & cloud sync | [07-AUTH-AND-DATABASE.md](07-AUTH-AND-DATABASE.md) |
 
 ## Repository Tree
 
@@ -37,11 +38,18 @@ GuitarTeacher/
 ├── next.config.ts                    # Turbopack root & CSS rule, cacheComponents
 ├── components.json                   # shadcn base-nova config
 ├── docs/assets/                      # README hero thumbnail & Light/Dark previews
+├── supabase/
+│   └── schema.sql                    # PostgreSQL profiles, progress, sessions & RLS policies
 ├── public/worklets/
 │   └── guitarPitchWorklet.js         # 128-sample AudioWorklet YIN DSP processor
 └── src/
+    ├── proxy.ts                      # Next.js 16 session refresh proxy (replaces middleware)
     ├── types/guitar.ts               # Canonical domain & telemetry interfaces
     ├── lib/
+    │   ├── supabase/                 # Browser & SSR Supabase client helpers
+    │   ├── auth.tsx                  # AuthProvider, Google OAuth sign-in & sign-out
+    │   ├── progressSync.ts           # Conflict-free local+cloud merge & PostgreSQL sync
+    │   ├── theme.ts                  # Shared Light/Dark/System theme hook
     │   ├── i18n.tsx                  # EN/KO LocaleProvider, navigator auto-detect & tr()
     │   ├── musicTheory.ts            # MIDI, frequency, interval, muted 4-finger colors
     │   ├── guitarSynthEngine.ts      # Web Audio guitar synth & lookahead transport
@@ -59,9 +67,17 @@ GuitarTeacher/
     │   └── curriculumData.ts         # Unified `ALL_LESSONS` (39) + `localizeLesson` helpers
     ├── app/
     │   ├── globals.css               # Tailwind v4 + HeroUI + Light/Dark CSS vars
-    │   ├── layout.tsx                # Fonts, zero-flash theme script, TooltipProvider
-    │   └── page.tsx                  # 3-column Studio client orchestrator (1554L)
+    │   ├── layout.tsx                # Fonts, SEO/JSON-LD, theme script, AuthProvider, TooltipProvider
+    │   ├── page.tsx                  # Public bilingual Landing Page (`/`)
+    │   ├── studio/page.tsx           # Protected interactive Studio workspace (`/studio`)
+    │   ├── auth/callback/route.ts    # PKCE OAuth callback handler (`/auth/callback`)
+    │   ├── robots.ts                 # Static robots.txt route
+    │   ├── sitemap.ts                # Static sitemap.xml route
+    │   └── icon.svg                  # Brand monoline icon
     └── components/
+        ├── landing/                  # `LandingPageClient.tsx`
+        ├── auth/                     # `AuthGateCard.tsx`
+        ├── studio/                   # `FretMasterStudioClient.tsx` (auth-gated orchestrator)
         ├── ui/                       # 15 shadcn/base-ui primitives
         ├── icons/GuitarSvgIcons.tsx  # Custom monoline SVGs (CSS var tokens)
         ├── motion/StudioMotion.tsx   # Framer Motion springs & MotionConfig

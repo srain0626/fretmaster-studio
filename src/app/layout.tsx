@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import { JetBrains_Mono, Plus_Jakarta_Sans } from "next/font/google";
 import "pretendard/dist/web/variable/pretendardvariable-dynamic-subset.css";
 import { TooltipProvider } from "@/components/ui/tooltip";
+import { AuthProvider } from "@/lib/auth";
 import { LocaleProvider } from "@/lib/i18n";
 import "./globals.css";
 
@@ -146,7 +147,9 @@ export default function RootLayout({
       </head>
       <body className="min-h-full flex flex-col bg-background text-foreground font-sans selection:bg-primary/15 selection:text-foreground">
         <LocaleProvider>
-          <TooltipProvider delay={200}>{children}</TooltipProvider>
+          <AuthProvider>
+            <TooltipProvider delay={200}>{children}</TooltipProvider>
+          </AuthProvider>
         </LocaleProvider>
       </body>
     </html>

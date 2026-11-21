@@ -1,23 +1,24 @@
 # 01. Architecture & State Flow
 
-## Boot, Theme & Locale Initialization
+## Boot, Theme, Locale & Auth Initialization
 
-File: `src/app/layout.tsx`, `src/lib/i18n.tsx`
+File: `src/app/layout.tsx`, `src/lib/i18n.tsx`, `src/lib/auth.tsx`, `src/lib/theme.ts`
 - Injects inline `<script dangerouslySetInnerHTML={{ __html: THEME_INIT_SCRIPT }} />` in `<head>` with `<html lang="en" suppressHydrationWarning>` to prevent Light/Dark FOUC before hydration.
 - Theme resolution order: `localStorage.getItem('fretmaster_theme') || 'system'` -> `window.matchMedia('(prefers-color-scheme: dark)').matches` -> toggles `html.dark` and sets `data-theme="dark"|"light"`.
 - Locale resolution: `<LocaleProvider>` starts in `'en'` on SSR for zero hydration mismatch, resolves `localStorage.getItem('fretmaster_locale') || 'system'` -> `navigator.language.startsWith('ko') ? 'ko' : 'en'` on mount, sets `document.documentElement.lang`, and exposes `{ locale, preference, setPreference, tr(en, ko) }`.
-- Wraps `<TooltipProvider delay={200}>` inside `<LocaleProvider>` (Base UI `TooltipProvider` uses `delay`, NOT `delayDuration`).
+- Auth resolution: `<AuthProvider>` wraps `<TooltipProvider delay={200}>`, checks `supabase.auth.getUser()` and `onAuthStateChange`, and exposes `{ user, loading, isConfigured, authError, signInWithGoogle, signOut }`.
+- Public `/` renders `LandingPageClient.tsx`; `/studio` (`FretMasterStudioClient.tsx`) requires authentication (`AuthGateCard` fallback when `!user`) and syncs per-user progress with Supabase PostgreSQL.
 
 ## Client Persistence Keys (`localStorage`)
 
 | Key | Read / Write Location | Payload Shape |
 | :--- | :--- | :--- |
 | `fretmaster_locale` | `src/lib/i18n.tsx`, `CurriculumSidebar.tsx` | `'system' \| 'en' \| 'ko'` |
-| `fretmaster_theme` | `layout.tsx`, `page.tsx` | `'system' \| 'light' \| 'dark'` |
-| `fretmaster_studio_progress_v1` | `page.tsx` | `UserProgressState` (`lessonRecords`, streak, `freeExploreMode`, `skills`) |
-| `fretmaster_studio_audio_v1` | `page.tsx` | `AudioDeviceConfig` (`deviceId`, `inputMode`, `channelMode`, `noiseGateDb`, `latencyOffsetMs`, etc.) |
+| `fretmaster_theme` | `layout.tsx`, `src/lib/theme.ts` | `'system' \| 'light' \| 'dark'` |
+| `fretmaster_studio_progress_v1` | `FretMasterStudioClient.tsx` | `UserProgressState` (local baseline merged into Supabase `user_progress`) |
+| `fretmaster_studio_audio_v1` | `FretMasterStudioClient.tsx` | `AudioDeviceConfig` (`deviceId`, `inputMode`, `channelMode`, `noiseGateDb`, `latencyOffsetMs`, etc.) |
 
-## 3-Column Studio Grid (`src/app/page.tsx`)
+## 3-Column Studio Grid (`src/components/studio/FretMasterStudioClient.tsx`)
 
 Grid container: `<div className="min-h-screen grid grid-cols-1 lg:grid-cols-[232px_minmax(0,1fr)_284px]">`
 
