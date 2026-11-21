@@ -4,6 +4,7 @@ import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { Player, type CallbackListener, type PlayerRef } from '@remotion/player';
 import { Pause, Play, RotateCcw, Volume2, VolumeX } from 'lucide-react';
 import { cn } from '@/lib/utils';
+import { useLocale } from '@/lib/i18n';
 
 export interface VideoAudioCue {
   frame: number;
@@ -49,6 +50,7 @@ export function ExplainerVideoShell<T extends Record<string, unknown>>({
   autoPlay = true,
   className,
 }: ExplainerVideoShellProps<T>) {
+  const { tr } = useLocale();
   const playerRef = useRef<PlayerRef>(null);
   const lastFrameRef = useRef<number>(-1);
   const soundEnabledRef = useRef<boolean>(soundEnabled);
@@ -191,7 +193,7 @@ export function ExplainerVideoShell<T extends Record<string, unknown>>({
         onClick={handleTogglePlay}
         role="button"
         tabIndex={0}
-        aria-label={isPlaying ? '설명 애니메이션 일시정지' : '설명 애니메이션 재생'}
+        aria-label={isPlaying ? tr('Pause explanation animation', '설명 애니메이션 일시정지') : tr('Play explanation animation', '설명 애니메이션 재생')}
         onKeyDown={(e) => {
           if (e.key === ' ' || e.key === 'Enter') {
             e.preventDefault();
@@ -236,7 +238,7 @@ export function ExplainerVideoShell<T extends Record<string, unknown>>({
           {!isPlaying && (
             <span className="inline-flex items-center gap-1 rounded-full border border-border/80 bg-card/95 px-2.5 py-0.5 text-[10px] font-medium text-foreground shadow-sm">
               <Play className="w-2.5 h-2.5 fill-current" />
-              재생
+              {tr('Play', '재생')}
             </span>
           )}
         </div>
@@ -248,8 +250,8 @@ export function ExplainerVideoShell<T extends Record<string, unknown>>({
           type="button"
           onClick={handleTogglePlay}
           className="inline-flex items-center justify-center w-6 h-6 rounded-md text-foreground hover:bg-secondary transition-colors cursor-pointer"
-          title={isPlaying ? '일시정지' : '재생'}
-          aria-label={isPlaying ? '일시정지' : '재생'}
+          title={isPlaying ? tr('Pause', '일시정지') : tr('Play', '재생')}
+          aria-label={isPlaying ? tr('Pause', '일시정지') : tr('Play', '재생')}
         >
           {isPlaying ? (
             <Pause className="w-3.5 h-3.5" />
@@ -262,8 +264,8 @@ export function ExplainerVideoShell<T extends Record<string, unknown>>({
           type="button"
           onClick={handleRestart}
           className="inline-flex items-center justify-center w-6 h-6 rounded-md text-muted-foreground hover:text-foreground hover:bg-secondary transition-colors cursor-pointer"
-          title="처음부터 다시 보기"
-          aria-label="처음부터 다시 보기"
+          title={tr('Restart animation', '처음부터 다시 보기')}
+          aria-label={tr('Restart animation', '처음부터 다시 보기')}
         >
           <RotateCcw className="w-3 h-3" />
         </button>
@@ -294,7 +296,7 @@ export function ExplainerVideoShell<T extends Record<string, unknown>>({
             max={durationInFrames - 1}
             value={currentFrame}
             onChange={handleScrub}
-            aria-label="애니메이션 타임라인"
+            aria-label={tr('Animation timeline', '애니메이션 타임라인')}
             className="absolute inset-0 w-full h-full opacity-0 cursor-pointer"
           />
         </div>
@@ -312,7 +314,7 @@ export function ExplainerVideoShell<T extends Record<string, unknown>>({
               ? 'border-primary/40 bg-primary/10 text-primary'
               : 'border-border bg-secondary/50 text-muted-foreground hover:text-foreground'
           )}
-          title="슬로우 모션 배속 전환"
+          title={tr('Toggle slow motion speed', '슬로우 모션 배속 전환')}
         >
           {playbackRate === 0.75 ? '0.75x' : '1.0x'}
         </button>
@@ -326,14 +328,14 @@ export function ExplainerVideoShell<T extends Record<string, unknown>>({
               ? 'border-primary/40 bg-primary/10 text-primary'
               : 'border-border bg-secondary/40 text-muted-foreground hover:text-foreground'
           )}
-          title={soundEnabled ? '데모 사운드 끄기' : '애니메이션에 맞춰 소리 듣기'}
+          title={soundEnabled ? tr('Mute demo sound', '데모 사운드 끄기') : tr('Play synced demo sound', '애니메이션에 맞춰 소리 듣기')}
         >
           {soundEnabled ? (
             <Volume2 className="w-3 h-3" />
           ) : (
             <VolumeX className="w-3 h-3" />
           )}
-          <span>사운드</span>
+          <span>{tr('Sound', '사운드')}</span>
         </button>
       </div>
     </div>

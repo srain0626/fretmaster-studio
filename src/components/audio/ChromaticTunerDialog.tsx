@@ -11,6 +11,7 @@ import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { TUNING_OPEN_STRINGS } from '@/lib/musicTheory';
 import { guitarSynthEngine } from '@/lib/guitarSynthEngine';
+import { useLocale } from '@/lib/i18n';
 import type { LivePitchData } from '@/types/guitar';
 import { Volume2 } from 'lucide-react';
 
@@ -29,6 +30,7 @@ export function ChromaticTunerDialog({
   isAudioRunning,
   onStartAudio,
 }: ChromaticTunerDialogProps) {
+  const { tr } = useLocale();
   const cents = Math.max(-50, Math.min(50, livePitch.centsOff));
   const needleAngleDeg = (cents / 50) * 58;
   const isInTune = livePitch.isActive && Math.abs(cents) <= 5;
@@ -45,16 +47,18 @@ export function ChromaticTunerDialog({
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="sm:max-w-md">
         <DialogHeader>
-          <DialogTitle className="text-base font-semibold">크로매틱 튜너</DialogTitle>
+          <DialogTitle className="text-base font-semibold">
+            {tr('Chromatic Tuner', '크로매틱 튜너')}
+          </DialogTitle>
         </DialogHeader>
 
         {!isAudioRunning && (
           <div className="rounded-lg border border-border bg-secondary/60 p-3 flex items-center justify-between">
             <span className="text-xs text-muted-foreground">
-              기타 입력을 시작하면 음정이 표시됩니다.
+              {tr('Enable guitar input to detect live pitch.', '기타 입력을 시작하면 음정이 표시됩니다.')}
             </span>
             <Button size="sm" onClick={onStartAudio}>
-              연결 시작
+              {tr('Connect', '연결 시작')}
             </Button>
           </div>
         )}
@@ -115,7 +119,7 @@ export function ChromaticTunerDialog({
               {livePitch.isActive ? livePitch.noteName : '--'}
             </span>
             <span className="text-xs text-muted-foreground">
-              {livePitch.isActive ? `${livePitch.frequency.toFixed(1)} Hz` : '대기 중'}
+              {livePitch.isActive ? `${livePitch.frequency.toFixed(1)} Hz` : tr('Idle', '대기 중')}
             </span>
           </div>
 
@@ -123,13 +127,15 @@ export function ChromaticTunerDialog({
             {livePitch.isActive ? (
               <Badge variant={isInTune ? 'default' : 'secondary'}>
                 {isInTune
-                  ? '정확함'
+                  ? tr('In Tune', '정확함')
                   : cents < 0
-                  ? `낮음 (${cents}c) · 조이세요`
-                  : `높음 (+${cents}c) · 푸세요`}
+                  ? tr(`Flat (${cents}c) · Tune Up`, `낮음 (${cents}c) · 조이세요`)
+                  : tr(`Sharp (+${cents}c) · Tune Down`, `높음 (+${cents}c) · 푸세요`)}
               </Badge>
             ) : (
-              <span className="text-xs text-muted-foreground">개방현을 한 줄씩 튕겨 보세요</span>
+              <span className="text-xs text-muted-foreground">
+                {tr('Pluck one open string at a time', '개방현을 한 줄씩 튕겨 보세요')}
+              </span>
             )}
           </div>
         </div>
@@ -148,7 +154,7 @@ export function ChromaticTunerDialog({
                 className="flex flex-col h-auto py-2"
                 onClick={() => guitarSynthEngine.playReferenceTone(st.freq, 1.5)}
               >
-                <span className="text-[10px] opacity-70">{st.string}번</span>
+                <span className="text-[10px] opacity-70">{tr(`Str ${st.string}`, `${st.string}번`)}</span>
                 <span className="font-mono text-xs font-semibold">{st.label}</span>
                 <Volume2 className="w-3 h-3 mt-1 opacity-60" />
               </Button>

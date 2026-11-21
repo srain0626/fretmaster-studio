@@ -37,6 +37,8 @@ import {
   getLessonById,
   getModuleById,
   getNextLesson,
+  localizeLesson,
+  localizeModule,
 } from '@/data/curriculumData';
 import {
   evaluateImprovisation,
@@ -47,7 +49,8 @@ import {
   type AudioLatencyTelemetry,
 } from '@/lib/lowLatencyAudioEngine';
 import { guitarSynthEngine } from '@/lib/guitarSynthEngine';
-import { getFingerNameKo, getNoteMidi, midiToNoteName } from '@/lib/musicTheory';
+import { getFingerName, getNoteMidi, midiToNoteName } from '@/lib/musicTheory';
+import { useLocale } from '@/lib/i18n';
 import type {
   AmpPreset,
   AudioDeviceConfig,
@@ -189,11 +192,24 @@ export default function FretMasterStudioPage() {
   const evaluationsRef = useRef<Record<string, NoteEvaluation>>({});
   const maxFlowStreakRef = useRef<number>(0);
 
-  const lesson = useMemo(
+  const { locale, tr } = useLocale();
+
+  const rawLesson = useMemo(
     () => getLessonById(selectedLessonId) ?? ALL_LESSONS[0],
     [selectedLessonId]
   );
-  const modInfo = useMemo(() => getModuleById(lesson.moduleId), [lesson.moduleId]);
+  const lesson = useMemo(
+    () => localizeLesson(rawLesson, locale),
+    [rawLesson, locale]
+  );
+  const modInfo = useMemo(() => {
+    const raw = getModuleById(lesson.moduleId);
+    return raw ? localizeModule(raw, locale) : undefined;
+  }, [lesson.moduleId, locale]);
+
+  useEffect(() => {
+    setFeedbackBanner(null);
+  }, [locale]);
 
   const moduleLessons = useMemo(
     () => ALL_LESSONS.filter((l) => l.moduleId === lesson.moduleId),
@@ -520,8 +536,11 @@ export default function FretMasterStudioPage() {
       }
       setFeedbackBanner({
         result: 'good',
-        title: '대기 중',
-        detail: '지판의 음을 기타로 치거나 클릭하면 다음 음으로 넘어갑니다.',
+        title: tr('Waiting', '대기 중'),
+        detail: tr(
+          'Play the highlighted note on your guitar or click the fretboard to advance.',
+          '지판의 음을 기타로 치거나 클릭하면 다음 음으로 넘어갑니다.'
+        ),
       });
       return;
     }
@@ -584,6 +603,7 @@ export default function FretMasterStudioPage() {
     lesson,
     loopRangeBars,
     practiceMode,
+    tr,
   ]);
 
   useEffect(() => {
@@ -672,8 +692,11 @@ export default function FretMasterStudioPage() {
 
         setFeedbackBanner({
           result: ev.result,
-          title: '좋아요',
-          detail: `${targetNote.string}번 줄 ${targetNote.fret}프렛 인식 완료`,
+          title: tr('Nice', '좋아요'),
+          detail: tr(
+            `String ${targetNote.string}, Fret ${targetNote.fret} recognized`,
+            `${targetNote.string}번 줄 ${targetNote.fret}프렛 인식 완료`
+          ),
         });
 
         if (activeNoteIndex + 1 < lesson.notes.length) {
@@ -682,23 +705,33 @@ export default function FretMasterStudioPage() {
           setCompletedTasks((prev) => new Set(prev).add('wait'));
           setFeedbackBanner({
             result: 'perfect',
-            title: '한 음씩 따라치기 완료',
-            detail: '이제 템포에 맞춰 완주해 보세요.',
+            title: tr('Step-by-Step Complete', '한 음씩 따라치기 완료'),
+            detail: tr('Now try playing along in tempo.', '이제 템포에 맞춰 완주해 보세요.'),
           });
           setActiveNoteIndex(0);
         }
       } else {
         const targetMidi = getNoteMidi(targetNote.string, targetNote.fret);
         const diffSemis = Math.round(livePitch.midiFloat - targetMidi);
+        const absSemis = Math.abs(diffSemis);
         const directionTip =
           diffSemis > 0
-            ? `조금 높아요 · ${Math.abs(diffSemis)}프렛 왼쪽으로`
-            : `조금 낮아요 · ${Math.abs(diffSemis)}프렛 오른쪽으로`;
+            ? tr(
+                `Slightly sharp · ${absSemis} fret${absSemis === 1 ? '' : 's'} left`,
+                `조금 높아요 · ${absSemis}프렛 왼쪽으로`
+              )
+            : tr(
+                `Slightly flat · ${absSemis} fret${absSemis === 1 ? '' : 's'} right`,
+                `조금 낮아요 · ${absSemis}프렛 오른쪽으로`
+              );
 
         setFeedbackBanner({
           result: 'miss',
-          title: '음정 확인',
-          detail: diffSemis === 0 ? '조금 더 정확히 눌러보세요' : directionTip,
+          title: tr('Check Pitch', '음정 확인'),
+          detail:
+            diffSemis === 0
+              ? tr('Press slightly cleaner right behind the fret', '조금 더 정확히 눌러보세요')
+              : directionTip,
         });
       }
       return;
@@ -726,8 +759,11 @@ export default function FretMasterStudioPage() {
 
         setFeedbackBanner({
           result: 'perfect',
-          title: `${targetIdx + 1}번째 음 찾음`,
-          detail: `${earTarget.string}번 줄 ${earTarget.fret}프렛`,
+          title: tr(`Note #${targetIdx + 1} found`, `${targetIdx + 1}번째 음 찾음`),
+          detail: tr(
+            `String ${earTarget.string} · Fret ${earTarget.fret}`,
+            `${earTarget.string}번 줄 ${earTarget.fret}프렛`
+          ),
         });
 
         if (nextSet.size === lesson.notes.length) {
@@ -763,8 +799,14 @@ export default function FretMasterStudioPage() {
           title: `${livePitch.noteName}`,
           detail:
             livePitch.midiFloat > targetMidi
-              ? '정답보다 높아요. 더 낮은 음을 찾아보세요.'
-              : '정답보다 낮아요. 더 높은 음을 찾아보세요.',
+              ? tr(
+                  'Higher than target. Try searching a lower pitch.',
+                  '정답보다 높아요. 더 낮은 음을 찾아보세요.'
+                )
+              : tr(
+                  'Lower than target. Try searching a higher pitch.',
+                  '정답보다 낮아요. 더 높은 음을 찾아보세요.'
+                ),
         });
       }
       return;
@@ -830,14 +872,14 @@ export default function FretMasterStudioPage() {
 
       const timingMsg =
         Math.abs(ev.timingErrorMs) <= 20
-          ? '정확한 박자'
+          ? tr('On beat', '정확한 박자')
           : ev.timingErrorMs < 0
-          ? `조금 빠름 (${ev.timingErrorMs}ms)`
-          : `조금 늦음 (+${ev.timingErrorMs}ms)`;
+          ? tr(`Slightly early (${ev.timingErrorMs}ms)`, `조금 빠름 (${ev.timingErrorMs}ms)`)
+          : tr(`Slightly late (+${ev.timingErrorMs}ms)`, `조금 늦음 (+${ev.timingErrorMs}ms)`);
 
       setFeedbackBanner({
         result: ev.result,
-        title: ev.result === 'miss' ? '빗나감' : '정확해요',
+        title: ev.result === 'miss' ? tr('Miss', '빗나감') : tr('Hit', '정확해요'),
         detail: timingMsg,
       });
     }
@@ -854,6 +896,7 @@ export default function FretMasterStudioPage() {
     livePitch,
     loopRangeBars,
     practiceMode,
+    tr,
   ]);
 
   const handleFretClick = useCallback(
@@ -900,8 +943,11 @@ export default function FretMasterStudioPage() {
           guitarSynthEngine.playSingleGuitarNote(active.string, shiftedFret, ampPreset, 0.35);
           setFeedbackBanner({
             result: 'miss',
-            title: '손가락 확인',
-            detail: `${getFingerNameKo(active.finger)}로 ${active.fret}프렛을 짚어보세요.`,
+            title: tr('Check Finger', '손가락 확인'),
+            detail: tr(
+              `Press fret ${active.fret} using ${getFingerName(active.finger, locale)}.`,
+              `${getFingerName(active.finger, locale)}로 ${active.fret}프렛을 짚어보세요.`
+            ),
           });
         }
       }
@@ -909,7 +955,7 @@ export default function FretMasterStudioPage() {
 
     window.addEventListener('keydown', onKeyDown);
     return () => window.removeEventListener('keydown', onKeyDown);
-  }, [activeNoteIndex, ampPreset, handleFretClick, lesson.notes, toggleTransport]);
+  }, [activeNoteIndex, ampPreset, handleFretClick, lesson.notes, locale, toggleTransport, tr]);
 
   const handleToggleAudio = async () => {
     if (isAudioRunning) {
@@ -926,7 +972,7 @@ export default function FretMasterStudioPage() {
       setAudioTelemetry(tel);
       setIsAudioRunning(true);
     } catch (err) {
-      setAudioError(err instanceof Error ? err.message : '오디오 연결 실패');
+      setAudioError(err instanceof Error ? err.message : tr('Audio connection failed', '오디오 연결 실패'));
       setIsAudioRunning(false);
     }
   };
@@ -949,13 +995,13 @@ export default function FretMasterStudioPage() {
       setAudioTelemetry(tel);
       setIsAudioRunning(true);
     } catch (err) {
-      setAudioError(err instanceof Error ? err.message : '오디오 재시작 실패');
+      setAudioError(err instanceof Error ? err.message : tr('Audio restart failed', '오디오 재시작 실패'));
     }
   };
 
   const improvMetrics: ImprovisationMetrics = useMemo(
-    () => evaluateImprovisation(improvEvents, lesson.scaleOverlay, lesson.chordProgression),
-    [improvEvents, lesson.chordProgression, lesson.scaleOverlay]
+    () => evaluateImprovisation(improvEvents, lesson.scaleOverlay, lesson.chordProgression, locale),
+    [improvEvents, lesson.chordProgression, lesson.scaleOverlay, locale]
   );
 
   const nextLesson = useMemo(() => getNextLesson(lesson.id), [lesson.id]);
@@ -964,74 +1010,117 @@ export default function FretMasterStudioPage() {
   const lessonTasks = useMemo(() => {
     if (lesson.supportsEarCopy) {
       return [
-        { mode: 'guide' as PracticeMode, label: '문제 음원 들어보기', hint: '음의 높낮이 익히기' },
-        { mode: 'earcopy' as PracticeMode, label: '귀로 듣고 채보하기', hint: '악보 없이 음 찾기' },
+        {
+          mode: 'guide' as PracticeMode,
+          label: tr('Listen to Target Riff', '문제 음원 들어보기'),
+          hint: tr('Learn pitch contour', '음의 높낮이 익히기'),
+        },
+        {
+          mode: 'earcopy' as PracticeMode,
+          label: tr('Transcribe by Ear', '귀로 듣고 채보하기'),
+          hint: tr('Find notes without TAB', '악보 없이 음 찾기'),
+        },
       ];
     }
     if (lesson.supportsJam) {
       return [
-        { mode: 'guide' as PracticeMode, label: '예시 반주 · 솔로 듣기', hint: '화성 흐름 익히기' },
-        { mode: 'jam' as PracticeMode, label: '자유 반주 · 즉흥 잼', hint: '내 음악으로 표현하기' },
+        {
+          mode: 'guide' as PracticeMode,
+          label: tr('Listen to Demo Solo', '예시 반주 · 솔로 듣기'),
+          hint: tr('Follow harmonic flow', '화성 흐름 익히기'),
+        },
+        {
+          mode: 'jam' as PracticeMode,
+          label: tr('Free Backing & Improv Jam', '자유 반주 · 즉흥 잼'),
+          hint: tr('Phrase your own solo', '내 음악으로 표현하기'),
+        },
       ];
     }
     return [
-      { mode: 'guide' as PracticeMode, label: '소리 들어보기', hint: '멜로디와 리듬 확인' },
-      { mode: 'wait' as PracticeMode, label: '한 음씩 따라치기', hint: '내 속도로 운지 익히기' },
-      { mode: 'loop' as PracticeMode, label: '템포 맞춰 완주하기', hint: `${bpm} BPM 리듬 연결` },
-      { mode: 'exam' as PracticeMode, label: '통과 테스트 보기', hint: '다음 단계 해금' },
+      {
+        mode: 'guide' as PracticeMode,
+        label: tr('Listen to Demo', '소리 들어보기'),
+        hint: tr('Check melody & rhythm', '멜로디와 리듬 확인'),
+      },
+      {
+        mode: 'wait' as PracticeMode,
+        label: tr('Step-by-Step Wait Mode', '한 음씩 따라치기'),
+        hint: tr('Learn fingering at your pace', '내 속도로 운지 익히기'),
+      },
+      {
+        mode: 'loop' as PracticeMode,
+        label: tr('Loop in Tempo', '템포 맞춰 완주하기'),
+        hint: tr(`Lock into ${bpm} BPM`, `${bpm} BPM 리듬 연결`),
+      },
+      {
+        mode: 'exam' as PracticeMode,
+        label: tr('Take Passing Exam', '통과 테스트 보기'),
+        hint: tr('Unlock next lesson', '다음 단계 해금'),
+      },
     ];
-  }, [bpm, lesson.supportsEarCopy, lesson.supportsJam]);
+  }, [bpm, lesson.supportsEarCopy, lesson.supportsJam, tr]);
 
   // Primary Action Button Label & Handler (One Clear CTA per Screen)
   const primaryCta = useMemo(() => {
     if (practiceMode === 'guide') {
       return {
-        label: '한 음씩 따라치기',
+        label: tr('Start Step-by-Step', '한 음씩 따라치기'),
         onClick: () => handlePracticeModeChange(lesson.supportsEarCopy ? 'earcopy' : lesson.supportsJam ? 'jam' : 'wait'),
       };
     }
     if (practiceMode === 'wait') {
       return {
-        label: '템포 연습으로 이동',
+        label: tr('Go to Tempo Loop', '템포 연습으로 이동'),
         onClick: () => handlePracticeModeChange('loop'),
       };
     }
     if (practiceMode === 'loop') {
       return {
-        label: '통과 테스트 보기',
+        label: tr('Take Passing Exam', '통과 테스트 보기'),
         onClick: () => handlePracticeModeChange('exam'),
       };
     }
     if (practiceMode === 'exam') {
       return {
-        label: isPlaying ? '테스트 중지' : '테스트 시작',
+        label: isPlaying ? tr('Stop Exam', '테스트 중지') : tr('Start Exam', '테스트 시작'),
         onClick: toggleTransport,
       };
     }
     return {
-      label: isPlaying ? '정지' : '반주 재생',
+      label: isPlaying ? tr('Stop', '정지') : tr('Play Backing', '반주 재생'),
       onClick: toggleTransport,
     };
-  }, [isPlaying, lesson.supportsEarCopy, lesson.supportsJam, practiceMode, toggleTransport]);
+  }, [isPlaying, lesson.supportsEarCopy, lesson.supportsJam, practiceMode, toggleTransport, tr]);
 
-  // Friendly TOSS-style 1-line guidance for current note
+  // Concise 1-line guidance for current note
   const activeNote = lesson.notes[activeNoteIndex];
   const currentFocusSentence = useMemo(() => {
     if (feedbackBanner) return feedbackBanner.detail;
     if (practiceMode === 'earcopy') {
-      return '문제 음원을 들은 뒤 지판에서 똑같은 소리가 나는 위치를 찾아보세요.';
+      return tr(
+        'Listen to the target riff, then find matching pitches directly on the fretboard.',
+        '문제 음원을 들은 뒤 지판에서 똑같은 소리가 나는 위치를 찾아보세요.'
+      );
     }
     if (practiceMode === 'jam') {
-      return `${currentChordBar?.chordName ?? ''} 코드가 울릴 때 지판 위 밝은 점을 기준으로 자유롭게 쳐보세요.`;
+      return tr(
+        `When the ${currentChordBar?.chordName ?? ''} chord sounds, target the highlighted scale and chord tones freely.`,
+        `${currentChordBar?.chordName ?? ''} 코드가 울릴 때 지판 위 밝은 점을 기준으로 자유롭게 쳐보세요.`
+      );
     }
     if (activeNote?.coachingNote) return activeNote.coachingNote;
     if (activeNote) {
-      return `${getFingerNameKo(activeNote.finger)}로 ${activeNote.string}번 줄 ${
-        activeNote.fret === 0 ? '개방현' : `${activeNote.fret}프렛`
-      }을 소리 내보세요.`;
+      return tr(
+        `Play string ${activeNote.string}, ${
+          activeNote.fret === 0 ? 'open string' : `fret ${activeNote.fret}`
+        } using ${getFingerName(activeNote.finger, locale)}.`,
+        `${getFingerName(activeNote.finger, locale)}로 ${activeNote.string}번 줄 ${
+          activeNote.fret === 0 ? '개방현' : `${activeNote.fret}프렛`
+        }을 소리 내보세요.`
+      );
     }
     return lesson.postureGuide.leftHandTip;
-  }, [activeNote, currentChordBar, feedbackBanner, lesson.postureGuide.leftHandTip, practiceMode]);
+  }, [activeNote, currentChordBar, feedbackBanner, lesson.postureGuide.leftHandTip, locale, practiceMode, tr]);
 
   const showFourthLabTab = lesson.supportsEarCopy || lesson.supportsJam || !isPhase1;
 
@@ -1126,7 +1215,7 @@ export default function FretMasterStudioPage() {
                   variant="outline"
                   onClick={() => setReportOpen(true)}
                 >
-                  최근 결과 ({lastTelemetry.score}점)
+                  {tr(`Last Result (${lastTelemetry.score})`, `최근 결과 (${lastTelemetry.score}점)`)}
                 </Button>
               )}
               <Button type="button" size="sm" onClick={primaryCta.onClick}>
@@ -1145,12 +1234,12 @@ export default function FretMasterStudioPage() {
               className="w-full"
             >
               <HeroTabs.ListContainer>
-                <HeroTabs.List aria-label="연습 도구" className="flex flex-row gap-4">
+                <HeroTabs.List aria-label={tr('Practice tools', '연습 도구')} className="flex flex-row gap-4">
                   <HeroTabs.Tab
                     id="tab"
                     className="w-auto px-1 pb-2.5 text-sm font-medium whitespace-nowrap"
                   >
-                    타브 악보
+                    {tr('TAB Score', '타브 악보')}
                     <HeroTabs.Indicator />
                   </HeroTabs.Tab>
                   <HeroTabs.Tab
@@ -1158,10 +1247,10 @@ export default function FretMasterStudioPage() {
                     className="w-auto px-1 pb-2.5 text-sm font-medium whitespace-nowrap"
                   >
                     {lesson.supportsEarCopy
-                      ? '귀카피 도구'
+                      ? tr('Ear Copy Lab', '귀카피 도구')
                       : lesson.supportsJam
-                      ? '즉흥 · 허밍'
-                      : '소리 믹서'}
+                      ? tr('Improv & Hum', '즉흥 · 허밍')
+                      : tr('Audio Mixer', '소리 믹서')}
                     <HeroTabs.Indicator />
                   </HeroTabs.Tab>
                 </HeroTabs.List>
@@ -1215,7 +1304,10 @@ export default function FretMasterStudioPage() {
                   <Surface variant="default" className="rounded-xl border border-border p-5 space-y-3.5">
                     <div className="flex items-center justify-between">
                       <span className="text-sm font-semibold">
-                        귀카피 채보 ({earCopyUnlockedIndices.size} / {lesson.notes.length})
+                        {tr(
+                          `Ear Copy Transcription (${earCopyUnlockedIndices.size} / ${lesson.notes.length})`,
+                          `귀카피 채보 (${earCopyUnlockedIndices.size} / ${lesson.notes.length})`
+                        )}
                       </span>
                       <div className="flex items-center gap-2">
                         <Button
@@ -1227,7 +1319,7 @@ export default function FretMasterStudioPage() {
                           }}
                         >
                           <Headphones className="w-3.5 h-3.5 mr-1.5" />
-                          {isPlaying ? '정지' : '문제 듣기'}
+                          {isPlaying ? tr('Stop', '정지') : tr('Listen', '문제 듣기')}
                         </Button>
                         <Button
                           type="button"
@@ -1236,7 +1328,7 @@ export default function FretMasterStudioPage() {
                           onClick={() => setEarCopyHintLevel((h) => Math.min(3, h + 1))}
                         >
                           <HelpCircle className="w-3.5 h-3.5 mr-1.5" />
-                          힌트 ({earCopyHintLevel}/3)
+                          {tr(`Hint (${earCopyHintLevel}/3)`, `힌트 (${earCopyHintLevel}/3)`)}
                         </Button>
                       </div>
                     </div>
@@ -1246,9 +1338,12 @@ export default function FretMasterStudioPage() {
                     />
                     {earCopyHintLevel > 0 && (
                       <p className="text-xs text-muted-foreground">
-                        {earCopyHintLevel === 1 && '지판에 스케일 영역이 표시되었습니다.'}
-                        {earCopyHintLevel === 2 && '첫 번째 시작 음이 공개되었습니다.'}
-                        {earCopyHintLevel >= 3 && '전체 정답 악보가 공개되었습니다.'}
+                        {earCopyHintLevel === 1 &&
+                          tr('Scale zone overlay is now visible on the fretboard.', '지판에 스케일 영역이 표시되었습니다.')}
+                        {earCopyHintLevel === 2 &&
+                          tr('The starting first note has been revealed.', '첫 번째 시작 음이 공개되었습니다.')}
+                        {earCopyHintLevel >= 3 &&
+                          tr('The complete target TAB score is revealed.', '전체 정답 악보가 공개되었습니다.')}
                       </p>
                     )}
                   </Surface>
@@ -1257,10 +1352,10 @@ export default function FretMasterStudioPage() {
                     <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
                       {(
                         [
-                          { label: '스케일 조화', val: improvMetrics.harmonicFit },
-                          { label: '코드 톤 착지', val: improvMetrics.chordToneResolution },
-                          { label: '리듬 여백', val: improvMetrics.rhythmBreathing },
-                          { label: '표현 기법', val: improvMetrics.expressiveArticulation },
+                          { label: tr('Scale Fit', '스케일 조화'), val: improvMetrics.harmonicFit },
+                          { label: tr('Chord Tones', '코드 톤 착지'), val: improvMetrics.chordToneResolution },
+                          { label: tr('Phrasing Space', '리듬 여백'), val: improvMetrics.rhythmBreathing },
+                          { label: tr('Expression', '표현 기법'), val: improvMetrics.expressiveArticulation },
                         ] as const
                       ).map((m) => (
                         <div key={m.label} className="rounded-lg bg-secondary/50 p-3 space-y-1.5">
@@ -1273,7 +1368,10 @@ export default function FretMasterStudioPage() {
 
                     <div className="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-border p-3">
                       <div className="text-xs text-muted-foreground">
-                        머릿속 멜로디를 흥얼거리면 현재 포지션 운지로 바꿔 지판에 띄워줍니다.
+                        {tr(
+                          'Hum a melody in your head to map it into the current fretboard position.',
+                          '머릿속 멜로디를 흥얼거리면 현재 포지션 운지로 바꿔 지판에 띄워줍니다.'
+                        )}
                       </div>
                       <Button
                         type="button"
@@ -1291,7 +1389,7 @@ export default function FretMasterStudioPage() {
                         }}
                       >
                         <Mic className="w-3.5 h-3.5 mr-1.5" />
-                        {isCapturingHum ? '채보 종료' : '허밍 매핑'}
+                        {isCapturingHum ? tr('Stop Capture', '채보 종료') : tr('Hum-to-Fret', '허밍 매핑')}
                       </Button>
                     </div>
                   </Surface>
@@ -1306,7 +1404,7 @@ export default function FretMasterStudioPage() {
                           onClick={() => setEnableGuideGuitar((v) => !v)}
                         >
                           {enableGuideGuitar ? <Volume2 className="w-3.5 h-3.5 mr-1" /> : <VolumeX className="w-3.5 h-3.5 mr-1" />}
-                          가이드 기타
+                          {tr('Guide Guitar', '가이드 기타')}
                         </Button>
                         <Button
                           type="button"
@@ -1314,7 +1412,7 @@ export default function FretMasterStudioPage() {
                           variant={enableDrumsAndBass ? 'default' : 'outline'}
                           onClick={() => setEnableDrumsAndBass((v) => !v)}
                         >
-                          드럼 · 베이스
+                          {tr('Drums & Bass', '드럼 · 베이스')}
                         </Button>
                         <Button
                           type="button"
@@ -1322,7 +1420,7 @@ export default function FretMasterStudioPage() {
                           variant={enableBackingChords ? 'default' : 'outline'}
                           onClick={() => setEnableBackingChords((v) => !v)}
                         >
-                          코드 반주
+                          {tr('Backing Chords', '코드 반주')}
                         </Button>
                         <Button
                           type="button"
@@ -1330,11 +1428,13 @@ export default function FretMasterStudioPage() {
                           variant={enableMetronome ? 'default' : 'outline'}
                           onClick={() => setEnableMetronome((v) => !v)}
                         >
-                          메트로놈
+                          {tr('Metronome', '메트로놈')}
                         </Button>
                       </div>
                       <div className="flex items-center gap-2 text-xs">
-                        <span className="text-muted-foreground">반복 시 +5 BPM 가속</span>
+                        <span className="text-muted-foreground">
+                          {tr('+5 BPM per loop', '반복 시 +5 BPM 가속')}
+                        </span>
                         <Switch checked={autoSpeedUp} onCheckedChange={setAutoSpeedUp} />
                       </div>
                     </div>
@@ -1354,7 +1454,10 @@ export default function FretMasterStudioPage() {
                 COURSE PROGRESS
               </div>
               <div className="mt-1 text-sm font-semibold text-foreground tabular-nums">
-                {completedInModule} / {moduleLessons.length} 레슨 완료
+                {tr(
+                  `${completedInModule} / ${moduleLessons.length} lessons completed`,
+                  `${completedInModule} / ${moduleLessons.length} 레슨 완료`
+                )}
               </div>
             </div>
             <MasteryRingSvg progress={moduleProgressPct} size={44} label={`${moduleProgressPct}%`} />
@@ -1416,7 +1519,7 @@ export default function FretMasterStudioPage() {
             {practiceMode === 'exam' && (
               <div className="pt-2 border-t border-border space-y-1.5">
                 <div className="text-[11px] font-medium text-muted-foreground">
-                  판정 기준
+                  {tr('Judgment Tier', '판정 기준')}
                 </div>
                 <Select
                   value={judgmentTier}
@@ -1428,21 +1531,21 @@ export default function FretMasterStudioPage() {
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="relaxed">느슨함 (입문)</SelectItem>
-                    <SelectItem value="standard">표준 (다음 단계 해금)</SelectItem>
-                    <SelectItem value="tight">엄격함 (칼박)</SelectItem>
-                    <SelectItem value="studio">완벽함 (블라인드)</SelectItem>
+                    <SelectItem value="relaxed">{tr('Relaxed (Starter)', '느슨함 (입문)')}</SelectItem>
+                    <SelectItem value="standard">{tr('Standard (Unlock Next)', '표준 (다음 단계 해금)')}</SelectItem>
+                    <SelectItem value="tight">{tr('Tight (Pocket)', '엄격함 (칼박)')}</SelectItem>
+                    <SelectItem value="studio">{tr('Studio (Blind)', '완벽함 (블라인드)')}</SelectItem>
                   </SelectContent>
                 </Select>
               </div>
             )}
           </div>
 
-          {/* CURRENT FOCUS (One Concise TOSS-style Sentence) */}
+          {/* CURRENT FOCUS (One Concise Sentence) */}
           <div className="rounded-2xl border border-border bg-card p-4 space-y-2">
             <div className="flex items-center justify-between">
               <span className="text-[10px] font-semibold tracking-wider text-muted-foreground uppercase">
-                지금 할 일
+                {tr('CURRENT FOCUS', '지금 할 일')}
               </span>
               {feedbackBanner && (
                 <Badge
@@ -1458,7 +1561,7 @@ export default function FretMasterStudioPage() {
             </p>
           </div>
 
-          {/* BOTTOM RIGHT: 화성 포인트 & 자세 · 교정 (Dribbble Reference Lesson Materials slot) */}
+          {/* BOTTOM RIGHT: Lesson Guide Entry Card */}
           <div className="mt-auto rounded-2xl border border-border bg-card p-4 space-y-2">
             <div className="text-[10px] font-semibold tracking-wider text-muted-foreground uppercase mb-1">
               LESSON GUIDE
@@ -1474,7 +1577,7 @@ export default function FretMasterStudioPage() {
             >
               <span className="inline-flex items-center gap-2.5 text-xs font-semibold text-foreground">
                 <Layers className="w-4 h-4 text-primary" />
-                화성 포인트
+                {tr('Harmony Point', '화성 포인트')}
               </span>
               <ChevronRight className="w-4 h-4 text-muted-foreground" />
             </button>
@@ -1489,7 +1592,7 @@ export default function FretMasterStudioPage() {
             >
               <span className="inline-flex items-center gap-2.5 text-xs font-semibold text-foreground">
                 <BookOpen className="w-4 h-4 text-primary" />
-                자세 · 교정
+                {tr('Posture & Fix', '자세 · 교정')}
               </span>
               <ChevronRight className="w-4 h-4 text-muted-foreground" />
             </button>

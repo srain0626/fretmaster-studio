@@ -92,7 +92,21 @@ export function getFingerColorHex(finger: FingerNumber): string {
   }
 }
 
-export function getFingerNameKo(finger: FingerNumber): string {
+export function getFingerName(finger: FingerNumber, locale: 'en' | 'ko' = 'ko'): string {
+  if (locale === 'en') {
+    switch (finger) {
+      case 1:
+        return 'Index (1)';
+      case 2:
+        return 'Middle (2)';
+      case 3:
+        return 'Ring (3)';
+      case 4:
+        return 'Pinky (4)';
+      default:
+        return 'Open String (0)';
+    }
+  }
   switch (finger) {
     case 1:
       return '1번 검지';
@@ -105,6 +119,10 @@ export function getFingerNameKo(finger: FingerNumber): string {
     default:
       return '개방현 (0)';
   }
+}
+
+export function getFingerNameKo(finger: FingerNumber): string {
+  return getFingerName(finger, 'ko');
 }
 
 export function findPossiblePositionsForMidi(

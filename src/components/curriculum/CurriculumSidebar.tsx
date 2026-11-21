@@ -13,7 +13,13 @@ import { ScrollArea } from '@/components/ui/scroll-area';
 import { Switch } from '@/components/ui/switch';
 import { BrandFretLogo } from '@/components/icons/GuitarSvgIcons';
 import { STUDIO_SPRING } from '@/components/motion/StudioMotion';
-import { ALL_LESSONS, MODULES } from '@/data/curriculumData';
+import {
+  ALL_LESSONS,
+  MODULES,
+  localizeLesson,
+  localizeModule,
+} from '@/data/curriculumData';
+import { useLocale, type LocalePreference } from '@/lib/i18n';
 import type { Lesson, PhaseId, UserProgressState } from '@/types/guitar';
 import {
   BarChart3,
@@ -23,6 +29,7 @@ import {
   Compass,
   Ear,
   Grid,
+  Languages,
   Lock,
   Monitor,
   Moon,
@@ -43,12 +50,12 @@ interface CurriculumSidebarProps {
   onThemeChange: (pref: ThemePreference) => void;
 }
 
-const PHASE_FILTERS: { id: 'all' | PhaseId; label: string }[] = [
-  { id: 'all', label: '전체' },
-  { id: 'phase-1', label: '입문 · 운지' },
-  { id: 'phase-2', label: '코드 · 스케일' },
-  { id: 'phase-3', label: '테크닉 · 솔로' },
-  { id: 'phase-4', label: '귀카피 · 즉흥' },
+const PHASE_FILTERS: { id: 'all' | PhaseId; enLabel: string; koLabel: string }[] = [
+  { id: 'all', enLabel: 'All', koLabel: '전체' },
+  { id: 'phase-1', enLabel: 'Foundations', koLabel: '입문 · 운지' },
+  { id: 'phase-2', enLabel: 'Chords & Scales', koLabel: '코드 · 스케일' },
+  { id: 'phase-3', enLabel: 'Tech & Solos', koLabel: '테크닉 · 솔로' },
+  { id: 'phase-4', enLabel: 'Ear Copy & Jam', koLabel: '귀카피 · 즉흥' },
 ];
 
 export function CurriculumSidebar({
@@ -60,23 +67,32 @@ export function CurriculumSidebar({
   themePreference,
   onThemeChange,
 }: CurriculumSidebarProps) {
+  const { locale, preference: localePref, setPreference: setLocalePref, tr } = useLocale();
   const [browserOpen, setBrowserOpen] = useState(false);
   const [phaseFilter, setPhaseFilter] = useState<'all' | PhaseId>('all');
   const [previewModuleId, setPreviewModuleId] = useState<string>('mod-1');
 
-  const activeLesson = useMemo(
-    () => ALL_LESSONS.find((l) => l.id === selectedLessonId) ?? ALL_LESSONS[0],
-    [selectedLessonId]
+  const localizedModules = useMemo(
+    () => MODULES.map((m) => localizeModule(m, locale)),
+    [locale]
   );
 
+  const activeLesson = useMemo(() => {
+    const raw = ALL_LESSONS.find((l) => l.id === selectedLessonId) ?? ALL_LESSONS[0];
+    return localizeLesson(raw, locale);
+  }, [selectedLessonId, locale]);
+
   const currentModule = useMemo(
-    () => MODULES.find((m) => m.id === activeLesson.moduleId) ?? MODULES[0],
-    [activeLesson.moduleId]
+    () => localizedModules.find((m) => m.id === activeLesson.moduleId) ?? localizedModules[0],
+    [localizedModules, activeLesson.moduleId]
   );
 
   const currentModuleLessons = useMemo(
-    () => ALL_LESSONS.filter((l) => l.moduleId === currentModule.id),
-    [currentModule.id]
+    () =>
+      ALL_LESSONS.filter((l) => l.moduleId === currentModule.id).map((l) =>
+        localizeLesson(l, locale)
+      ),
+    [currentModule.id, locale]
   );
 
   const isLessonUnlocked = (lesson: Lesson): boolean => {
@@ -88,18 +104,21 @@ export function CurriculumSidebar({
   };
 
   const filteredModules = useMemo(() => {
-    if (phaseFilter === 'all') return MODULES;
-    return MODULES.filter((m) => m.phaseId === phaseFilter);
-  }, [phaseFilter]);
+    if (phaseFilter === 'all') return localizedModules;
+    return localizedModules.filter((m) => m.phaseId === phaseFilter);
+  }, [localizedModules, phaseFilter]);
 
   const effectivePreviewModule = useMemo(() => {
     const match = filteredModules.find((m) => m.id === previewModuleId);
-    return match ?? filteredModules[0] ?? MODULES[0];
-  }, [filteredModules, previewModuleId]);
+    return match ?? filteredModules[0] ?? localizedModules[0];
+  }, [filteredModules, previewModuleId, localizedModules]);
 
   const previewLessons = useMemo(
-    () => ALL_LESSONS.filter((l) => l.moduleId === effectivePreviewModule.id),
-    [effectivePreviewModule.id]
+    () =>
+      ALL_LESSONS.filter((l) => l.moduleId === effectivePreviewModule.id).map((l) =>
+        localizeLesson(l, locale)
+      ),
+    [effectivePreviewModule.id, locale]
   );
 
   const jumpToLessonId = (id: string) => {
@@ -127,6 +146,12 @@ export function CurriculumSidebar({
     onThemeChange(next);
   };
 
+  const cycleLocale = () => {
+    const next: LocalePreference =
+      localePref === 'system' ? 'en' : localePref === 'en' ? 'ko' : 'system';
+    setLocalePref(next);
+  };
+
   return (
     <>
       <aside className="flex flex-col h-full bg-sidebar border-b lg:border-b-0 lg:border-r border-sidebar-border px-3.5 py-4 select-none">
@@ -138,22 +163,34 @@ export function CurriculumSidebar({
               FretMaster
             </span>
           </div>
-          <Button
-            type="button"
-            size="icon-xs"
-            variant="ghost"
-            onClick={cycleTheme}
-            className="lg:hidden text-muted-foreground"
-            title="화면 테마 전환"
-          >
-            {themePreference === 'dark' ? (
-              <Moon className="w-3.5 h-3.5" />
-            ) : themePreference === 'light' ? (
-              <Sun className="w-3.5 h-3.5" />
-            ) : (
-              <Monitor className="w-3.5 h-3.5" />
-            )}
-          </Button>
+          <div className="flex items-center gap-1 lg:hidden">
+            <Button
+              type="button"
+              size="icon-xs"
+              variant="ghost"
+              onClick={cycleLocale}
+              className="text-muted-foreground text-[10px] font-mono"
+              title={tr('Switch Language', '언어 전환')}
+            >
+              <Languages className="w-3.5 h-3.5" />
+            </Button>
+            <Button
+              type="button"
+              size="icon-xs"
+              variant="ghost"
+              onClick={cycleTheme}
+              className="text-muted-foreground"
+              title={tr('Switch Theme', '화면 테마 전환')}
+            >
+              {themePreference === 'dark' ? (
+                <Moon className="w-3.5 h-3.5" />
+              ) : themePreference === 'light' ? (
+                <Sun className="w-3.5 h-3.5" />
+              ) : (
+                <Monitor className="w-3.5 h-3.5" />
+              )}
+            </Button>
+          </div>
         </div>
 
         {/* LEARNING Section */}
@@ -167,7 +204,7 @@ export function CurriculumSidebar({
             className="w-full flex items-center gap-2.5 rounded-lg px-2.5 py-2 text-[13px] font-medium text-foreground bg-card shadow-[0_1px_2px_rgba(0,0,0,0.03)] border border-border/70 transition-colors"
           >
             <BookOpen className="w-4 h-4 text-primary" />
-            <span>전체 커리큘럼</span>
+            <span>{tr('All Curriculum', '전체 커리큘럼')}</span>
           </button>
 
           <button
@@ -176,7 +213,7 @@ export function CurriculumSidebar({
             className="w-full flex items-center gap-2.5 rounded-lg px-2.5 py-2 text-[13px] font-medium text-muted-foreground hover:text-foreground hover:bg-card/60 transition-colors"
           >
             <Compass className="w-4 h-4" />
-            <span>주제별 골라 배우기</span>
+            <span>{tr('Browse by Topic', '주제별 골라 배우기')}</span>
           </button>
 
           <button
@@ -185,7 +222,7 @@ export function CurriculumSidebar({
             className="w-full flex items-center gap-2.5 rounded-lg px-2.5 py-2 text-[13px] font-medium text-muted-foreground hover:text-foreground hover:bg-card/60 transition-colors"
           >
             <BarChart3 className="w-4 h-4" />
-            <span>내 연습 기록</span>
+            <span>{tr('My Progress', '내 연습 기록')}</span>
           </button>
         </div>
 
@@ -204,7 +241,7 @@ export function CurriculumSidebar({
             }`}
           >
             <Ear className="w-4 h-4" />
-            <span>귀카피 연습</span>
+            <span>{tr('Ear Copy Lab', '귀카피 연습')}</span>
           </button>
           <button
             type="button"
@@ -216,7 +253,7 @@ export function CurriculumSidebar({
             }`}
           >
             <Radio className="w-4 h-4" />
-            <span>자유 반주 · 즉흥</span>
+            <span>{tr('Comping & Improv', '자유 반주 · 즉흥')}</span>
           </button>
         </div>
 
@@ -232,7 +269,7 @@ export function CurriculumSidebar({
               className="text-[11px] font-medium text-primary hover:underline flex items-center gap-1"
             >
               <Grid className="w-3 h-3" />
-              변경
+              {tr('Browse', '변경')}
             </button>
           </div>
 
@@ -283,36 +320,67 @@ export function CurriculumSidebar({
           </ScrollArea>
         </div>
 
-        {/* Subtle Bottom Theme Selector (Desktop) */}
-        <div className="hidden lg:flex items-center justify-between pt-3 mt-3 border-t border-sidebar-border px-1.5">
-          <span className="text-[11px] text-muted-foreground">화면 테마</span>
-          <div className="inline-flex items-center rounded-lg border border-border bg-card p-0.5">
-            {(
-              [
-                { id: 'system', icon: Monitor, label: '자동' },
-                { id: 'light', icon: Sun, label: '라이트' },
-                { id: 'dark', icon: Moon, label: '다크' },
-              ] as const
-            ).map((opt) => {
-              const Icon = opt.icon;
-              const active = themePreference === opt.id;
-              return (
-                <button
-                  key={opt.id}
-                  type="button"
-                  onClick={() => onThemeChange(opt.id)}
-                  className={`inline-flex items-center gap-1 rounded-md px-2 py-1 text-[10.5px] font-medium transition-colors ${
-                    active
-                      ? 'bg-secondary text-foreground'
-                      : 'text-muted-foreground hover:text-foreground'
-                  }`}
-                  title={opt.label}
-                >
-                  <Icon className="w-3 h-3" />
-                  <span>{opt.label}</span>
-                </button>
-              );
-            })}
+        {/* Subtle Bottom Language & Theme Selectors (Desktop) */}
+        <div className="hidden lg:flex flex-col gap-2 pt-3 mt-3 border-t border-sidebar-border px-1.5">
+          <div className="flex items-center justify-between">
+            <span className="text-[11px] text-muted-foreground">{tr('Language', '언어')}</span>
+            <div className="inline-flex items-center rounded-lg border border-border bg-card p-0.5">
+              {(
+                [
+                  { id: 'system', label: tr('Auto', '자동') },
+                  { id: 'en', label: 'EN' },
+                  { id: 'ko', label: '한국어' },
+                ] as const
+              ).map((opt) => {
+                const active = localePref === opt.id;
+                return (
+                  <button
+                    key={opt.id}
+                    type="button"
+                    onClick={() => setLocalePref(opt.id)}
+                    className={`rounded-md px-2 py-0.5 text-[10.5px] font-medium transition-colors ${
+                      active
+                        ? 'bg-secondary text-foreground'
+                        : 'text-muted-foreground hover:text-foreground'
+                    }`}
+                  >
+                    {opt.label}
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+
+          <div className="flex items-center justify-between">
+            <span className="text-[11px] text-muted-foreground">{tr('Theme', '화면 테마')}</span>
+            <div className="inline-flex items-center rounded-lg border border-border bg-card p-0.5">
+              {(
+                [
+                  { id: 'system', icon: Monitor, label: tr('Auto', '자동') },
+                  { id: 'light', icon: Sun, label: tr('Light', '라이트') },
+                  { id: 'dark', icon: Moon, label: tr('Dark', '다크') },
+                ] as const
+              ).map((opt) => {
+                const Icon = opt.icon;
+                const active = themePreference === opt.id;
+                return (
+                  <button
+                    key={opt.id}
+                    type="button"
+                    onClick={() => onThemeChange(opt.id)}
+                    className={`inline-flex items-center gap-1 rounded-md px-2 py-1 text-[10.5px] font-medium transition-colors ${
+                      active
+                        ? 'bg-secondary text-foreground'
+                        : 'text-muted-foreground hover:text-foreground'
+                    }`}
+                    title={opt.label}
+                  >
+                    <Icon className="w-3 h-3" />
+                    <span>{opt.label}</span>
+                  </button>
+                );
+              })}
+            </div>
           </div>
         </div>
       </aside>
@@ -322,14 +390,14 @@ export function CurriculumSidebar({
         <DialogContent className="sm:max-w-3xl p-0 gap-0 overflow-hidden">
           <DialogHeader className="px-6 pt-5 pb-4 border-b border-border">
             <DialogTitle className="flex items-center justify-between pr-8 text-base font-semibold">
-              <span>커리큘럼</span>
+              <span>{tr('Curriculum', '커리큘럼')}</span>
               <div className="flex items-center gap-2 font-normal text-xs text-muted-foreground">
                 {progress.freeExploreMode ? (
                   <Unlock className="w-3.5 h-3.5 text-primary" />
                 ) : (
                   <Lock className="w-3.5 h-3.5" />
                 )}
-                <span>자유 탐색</span>
+                <span>{tr('Free Explore', '자유 탐색')}</span>
                 <Switch
                   checked={progress.freeExploreMode}
                   onCheckedChange={onToggleFreeExplore}
@@ -347,7 +415,7 @@ export function CurriculumSidebar({
                   variant={phaseFilter === pf.id ? 'default' : 'secondary'}
                   onClick={() => setPhaseFilter(pf.id)}
                 >
-                  {pf.label}
+                  {locale === 'en' ? pf.enLabel : pf.koLabel}
                 </Button>
               ))}
             </div>
@@ -398,7 +466,9 @@ export function CurriculumSidebar({
                   Module {effectivePreviewModule.number}. {effectivePreviewModule.title}
                 </h3>
                 <span className="text-xs text-muted-foreground font-mono">
-                  {previewLessons.length}개 레슨
+                  {locale === 'en'
+                    ? `${previewLessons.length} lessons`
+                    : `${previewLessons.length}개 레슨`}
                 </span>
               </div>
 

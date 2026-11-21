@@ -4,6 +4,20 @@ import {
   getNoteMidi,
   midiToNoteName,
 } from '@/lib/musicTheory';
+
+function isEnglishRuntimeLocale(): boolean {
+  if (typeof window === 'undefined') return true;
+  try {
+    const pref = window.localStorage.getItem('fretmaster_locale');
+    if (pref === 'ko') return false;
+    if (pref === 'en') return true;
+  } catch {
+    // ignore storage access issues
+  }
+  return typeof navigator !== 'undefined'
+    ? !navigator.language.toLowerCase().startsWith('ko')
+    : true;
+}
 import type {
   AudioDeviceConfig,
   ChordBar,
@@ -81,6 +95,22 @@ export const JUDGMENT_TIERS: Record<JudgmentTier, JudgmentTierSpec> = {
     minPassScore: 90,
   },
 };
+
+export function getJudgmentTierLabel(tier: JudgmentTier, locale: 'en' | 'ko' = 'ko'): string {
+  if (locale === 'en') {
+    switch (tier) {
+      case 'relaxed':
+        return 'Relaxed (Beginner)';
+      case 'standard':
+        return 'Standard (Unlock Next)';
+      case 'tight':
+        return 'Tight (Strict Pocket)';
+      case 'studio':
+        return 'Studio Master (Blind)';
+    }
+  }
+  return JUDGMENT_TIERS[tier].label;
+}
 
 export interface AudioLatencyTelemetry {
   sampleRate: number;
@@ -201,7 +231,11 @@ export class LowLatencyGuitarAudioEngine {
     }
 
     if (typeof window === 'undefined' || !navigator.mediaDevices?.getUserMedia) {
-      throw new Error('이 브라우저는 Web Audio 오디오 입력을 지원하지 않습니다.');
+      throw new Error(
+        isEnglishRuntimeLocale()
+          ? 'This browser does not support Web Audio microphone input.'
+          : '이 브라우저는 Web Audio 오디오 입력을 지원하지 않습니다.'
+      );
     }
 
     const AudioCtx =
@@ -309,7 +343,9 @@ export class LowLatencyGuitarAudioEngine {
             ws.close();
             reject(
               new Error(
-                `로컬 ASIO 브리지(${this.config.asioBridgeUrl})에 연결할 수 없습니다. 브라우저 Worklet 모드로 전환해 사용하세요.`
+                isEnglishRuntimeLocale()
+                  ? `Unable to connect to local ASIO bridge (${this.config.asioBridgeUrl}). Switch to Browser Worklet mode.`
+                  : `로컬 ASIO 브리지(${this.config.asioBridgeUrl})에 연결할 수 없습니다. 브라우저 Worklet 모드로 전환해 사용하세요.`
               )
             );
           }
@@ -356,7 +392,13 @@ export class LowLatencyGuitarAudioEngine {
         ws.onerror = () => {
           clearTimeout(timeout);
           this.telemetry.asioBridgeConnected = false;
-          reject(new Error('ASIO 브리지 소켓 연결 오류가 발생했습니다.'));
+          reject(
+            new Error(
+              isEnglishRuntimeLocale()
+                ? 'ASIO bridge WebSocket connection error occurred.'
+                : 'ASIO 브리지 소켓 연결 오류가 발생했습니다.'
+            )
+          );
         };
       } catch (e) {
         reject(e);
@@ -621,8 +663,10 @@ export function evaluateNoteHit(
 export function evaluateImprovisation(
   playedEvents: { midi: number; barIndex: number; isBend: boolean; gapMs: number }[],
   scaleOverlay: ScaleOverlayNote[],
-  chordProgression: ChordBar[]
+  chordProgression: ChordBar[],
+  locale: 'en' | 'ko' = 'ko'
 ): ImprovisationMetrics {
+  const isEn = locale === 'en';
   if (playedEvents.length === 0) {
     return {
       harmonicFit: 0,
@@ -635,7 +679,9 @@ export function evaluateImprovisation(
       bendsDetected: 0,
       phraseCount: 0,
       overallScore: 0,
-      feedbackSummary: '즉흥 잼을 시작하고 기타를 연주하면 화성 조화도와 코드 톤 착지력을 실시간으로 분석합니다.',
+      feedbackSummary: isEn
+        ? 'Start Improv Jam and play your guitar to analyze harmonic fit and chord-tone landings in real time.'
+        : '즉흥 잼을 시작하고 기타를 연주하면 화성 조화도와 코드 톤 착지력을 실시간으로 분석합니다.',
     };
   }
 
@@ -685,17 +731,21 @@ export function evaluateImprovisation(
 
   let feedbackSummary = '';
   if (overallScore >= 85) {
-    feedbackSummary =
-      '코드 체인지에 맞춘 타겟 노트 착지와 프레이징 여백(호흡)이 매우 자연스럽습니다.';
+    feedbackSummary = isEn
+      ? 'Natural chord-tone resolutions over changes with musical breathing room between phrases.'
+      : '코드 체인지에 맞춘 타겟 노트 착지와 프레이징 여백(호흡)이 매우 자연스럽습니다.';
   } else if (chordToneResolution < 60) {
-    feedbackSummary =
-      '스케일 음은 안정적입니다. 다음 마디로 넘어갈 때 지판에 표시된 현재 코드 톤(R, 3, 5)에서 프레이즈를 마무리해 보세요.';
+    feedbackSummary = isEn
+      ? 'Scale notes are steady. Try resolving the end of each phrase onto highlighted chord tones (R, 3, 5) on chord changes.'
+      : '스케일 음은 안정적입니다. 다음 마디로 넘어갈 때 지판에 표시된 현재 코드 톤(R, 3, 5)에서 프레이즈를 마무리해 보세요.';
   } else if (rhythmBreathing < 70) {
-    feedbackSummary =
-      '음을 쉼 없이 이어 치기보다 2~3음 문장 사이에 짧은 쉼표(호흡)를 두면 훨씬 노래하는 솔로가 됩니다.';
+    feedbackSummary = isEn
+      ? 'Instead of nonstop notes, leave brief rests between short 2-3 note statements so your solo breathes.'
+      : '음을 쉼 없이 이어 치기보다 2~3음 문장 사이에 짧은 쉼표(호흡)를 두면 훨씬 노래하는 솔로가 됩니다.';
   } else {
-    feedbackSummary =
-      '안정적인 화성 감각입니다. 긴 음에 벤딩이나 비브라토 표현을 더하면 완성도가 한층 높아집니다.';
+    feedbackSummary = isEn
+      ? 'Solid harmonic awareness. Add controlled bends or vibrato to sustained target notes for extra voice.'
+      : '안정적인 화성 감각입니다. 긴 음에 벤딩이나 비브라토 표현을 더하면 완성도가 한층 높아집니다.';
   }
 
   return {

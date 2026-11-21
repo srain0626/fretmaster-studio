@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import { JetBrains_Mono, Plus_Jakarta_Sans } from "next/font/google";
 import "pretendard/dist/web/variable/pretendardvariable-dynamic-subset.css";
 import { TooltipProvider } from "@/components/ui/tooltip";
+import { LocaleProvider } from "@/lib/i18n";
 import "./globals.css";
 
 const plusJakarta = Plus_Jakarta_Sans({
@@ -19,8 +20,8 @@ const jetbrainsMono = JetBrains_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "FretMaster",
-  description: "일렉트릭 기타 운지, 화성, 귀카피, 즉흥 연주 학습 서비스",
+  title: "FretMaster Studio",
+  description: "Interactive electric guitar learning platform for mechanics, fretboard harmony, ear copy, and improvisation",
 };
 
 const THEME_INIT_SCRIPT = `
@@ -51,7 +52,9 @@ export default function RootLayout({
         <script dangerouslySetInnerHTML={{ __html: THEME_INIT_SCRIPT }} />
       </head>
       <body className="min-h-full flex flex-col bg-background text-foreground font-sans selection:bg-primary/15 selection:text-foreground">
-        <TooltipProvider delay={200}>{children}</TooltipProvider>
+        <LocaleProvider>
+          <TooltipProvider delay={200}>{children}</TooltipProvider>
+        </LocaleProvider>
       </body>
     </html>
   );

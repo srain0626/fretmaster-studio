@@ -5,10 +5,12 @@ import { interpolate, spring, useCurrentFrame, useVideoConfig } from 'remotion';
 import type { GuitarString, Lesson } from '@/types/guitar';
 import { getFingerColorHex } from '@/lib/musicTheory';
 import { guitarSynthEngine } from '@/lib/guitarSynthEngine';
+import type { Locale } from '@/lib/i18n';
 import type { VideoAudioCue } from './ExplainerVideoShell';
 
 export interface PostureCompositionProps {
   lesson: Lesson;
+  locale?: Locale;
   [key: string]: unknown;
 }
 
@@ -56,27 +58,28 @@ export function resolvePostureVariant(lesson: Lesson): PostureVariant {
   return 'anchor-spider-grip';
 }
 
-export function getPostureMotionLabel(lesson: Lesson): string {
+export function getPostureMotionLabel(lesson: Lesson, locale: Locale = 'ko'): string {
+  const isEn = locale === 'en';
   const variant = resolvePostureVariant(lesson);
   switch (variant) {
     case 'pick-pendulum':
-      return '자세 · 교정 · 피크 각도 & 손목 진자';
+      return isEn ? 'Posture · Pick Angle & Wrist Swing' : '자세 · 교정 · 피크 각도 & 손목 진자';
     case 'fretwire-cross-section':
-      return '자세 · 교정 · 프렛쇠 단면 & 버징 방지';
+      return isEn ? 'Posture · Fretwire Placement vs Buzz' : '자세 · 교정 · 프렛쇠 단면 & 버징 방지';
     case 'palm-mute-bridge':
-      return '자세 · 교정 · 브리지 새들 팜뮤트 위치';
+      return isEn ? 'Posture · Bridge Saddle Palm Mute' : '자세 · 교정 · 브리지 새들 팜뮤트 위치';
     case 'chord-touch-mute':
-      return '자세 · 교정 · 1번 검지 불필요 줄 터치 뮤트';
+      return isEn ? 'Posture · Index Flat Touch Muting' : '자세 · 교정 · 1번 검지 불필요 줄 터치 뮤트';
     case 'anchor-spider-grip':
-      return '자세 · 교정 · 앵커 핑거 & 넥 뒷면 엄지';
+      return isEn ? 'Posture · Anchor Finger & Rear Thumb' : '자세 · 교정 · 앵커 핑거 & 넥 뒷면 엄지';
     case 'legato-eye-shift':
       return lesson.id === 'm6-1'
-        ? '자세 · 교정 · 해머링 타격 & 풀오프 스냅'
-        : '자세 · 교정 · 시선 선행 포지션 이동';
+        ? isEn ? 'Posture · Hammer Strike & Snap Pull' : '자세 · 교정 · 해머링 타격 & 풀오프 스냅'
+        : isEn ? 'Posture · Eye-Lead Position Shift' : '자세 · 교정 · 시선 선행 포지션 이동';
     case 'bend-pivot':
-      return '자세 · 교정 · 엄지 지렛대 & 3손가락 서포트';
+      return isEn ? 'Posture · Thumb Pivot & 3-Finger Bend' : '자세 · 교정 · 엄지 지렛대 & 3손가락 서포트';
     case 'ear-comp-jam':
-      return '자세 · 교정 · 반주 ↔ 솔로 호흡 전환';
+      return isEn ? 'Posture · Comp ↔ Solo Role Switch' : '자세 · 교정 · 반주 ↔ 솔로 호흡 전환';
   }
 }
 
@@ -192,7 +195,10 @@ function VectorStatusIcon({ ok, x, y }: { ok: boolean; x: number; y: number }) {
   );
 }
 
-export const PostureExplainerComposition: React.FC<PostureCompositionProps> = ({ lesson }) => {
+export const PostureExplainerComposition: React.FC<PostureCompositionProps> = ({
+  lesson,
+  locale = 'ko',
+}) => {
   const frame = useCurrentFrame();
   const { fps } = useVideoConfig();
   const variant = resolvePostureVariant(lesson);
@@ -214,22 +220,23 @@ export const PostureExplainerComposition: React.FC<PostureCompositionProps> = ({
       </defs>
       <rect width="720" height="320" fill="url(#postureGrid)" />
 
-      {variant === 'fretwire-cross-section' && <FretwireCrossSectionScene frame={frame} fps={fps} />}
-      {variant === 'pick-pendulum' && <PickPendulumScene frame={frame} fps={fps} />}
-      {variant === 'palm-mute-bridge' && <PalmMuteBridgeScene frame={frame} fps={fps} />}
-      {variant === 'chord-touch-mute' && <ChordTouchMuteScene frame={frame} fps={fps} />}
-      {variant === 'anchor-spider-grip' && <AnchorSpiderGripScene frame={frame} fps={fps} />}
+      {variant === 'fretwire-cross-section' && <FretwireCrossSectionScene frame={frame} fps={fps} locale={locale} />}
+      {variant === 'pick-pendulum' && <PickPendulumScene frame={frame} fps={fps} locale={locale} />}
+      {variant === 'palm-mute-bridge' && <PalmMuteBridgeScene frame={frame} fps={fps} locale={locale} />}
+      {variant === 'chord-touch-mute' && <ChordTouchMuteScene frame={frame} fps={fps} locale={locale} />}
+      {variant === 'anchor-spider-grip' && <AnchorSpiderGripScene frame={frame} fps={fps} locale={locale} />}
       {variant === 'legato-eye-shift' && (
-        <LegatoEyeShiftScene frame={frame} fps={fps} isHammer={lesson.id === 'm6-1'} />
+        <LegatoEyeShiftScene frame={frame} fps={fps} isHammer={lesson.id === 'm6-1'} locale={locale} />
       )}
-      {variant === 'bend-pivot' && <BendPivotScene frame={frame} fps={fps} />}
-      {variant === 'ear-comp-jam' && <EarCompJamScene frame={frame} fps={fps} />}
+      {variant === 'bend-pivot' && <BendPivotScene frame={frame} fps={fps} locale={locale} />}
+      {variant === 'ear-comp-jam' && <EarCompJamScene frame={frame} fps={fps} locale={locale} />}
     </svg>
   );
 };
 
 /* ── 1. Fretwire Side Cross-Section (Buzz vs Crispbehind-Fret) ─────────── */
-const FretwireCrossSectionScene: React.FC<{ frame: number; fps: number }> = ({ frame, fps }) => {
+const FretwireCrossSectionScene: React.FC<{ frame: number; fps: number; locale: Locale }> = ({ frame, fps, locale }) => {
+  const isEn = locale === 'en';
   const showGood = frame >= 115;
   const fingerPressT = interpolate(frame % 120, [10, 40, 100, 118], [0, 1, 1, 0], {
     extrapolateLeft: 'clamp',
@@ -242,13 +249,17 @@ const FretwireCrossSectionScene: React.FC<{ frame: number; fps: number }> = ({ f
   return (
     <g>
       <text x="44" y="54" fontSize="13" fontWeight="700" fill="var(--foreground)">
-        지판 옆면 단면 비교: 왜 프렛쇠 바로 뒤를 세워서 눌러야 버징(Buzz)이 안 날까?
+        {isEn
+          ? 'Side Cross-Section: Why Pressing Just Behind the Fretwire Prevents Buzz'
+          : '지판 옆면 단면 비교: 왜 프렛쇠 바로 뒤를 세워서 눌러야 버징(Buzz)이 안 날까?'}
       </text>
 
       {/* LEFT PANEL: Bad Center Press */}
       <rect x="44" y="72" width="302" height="222" rx="12" fill="var(--secondary)" fillOpacity={!showGood ? 0.55 : 0.25} stroke={!showGood ? '#B56357' : 'var(--border)'} strokeWidth={!showGood ? 1.8 : 1} />
       <VectorStatusIcon ok={false} x={68} y={96} />
-      <text x="86" y="100" fontSize="12" fontWeight="700" fill="#B56357">칸 한가운데를 눕혀 누름 (버징 발생)</text>
+      <text x="86" y="100" fontSize="12" fontWeight="700" fill="#B56357">
+        {isEn ? 'Flat Finger Mid-Fret (Buzzes)' : '칸 한가운데를 눕혀 누름 (버징 발생)'}
+      </text>
 
       {/* Wood board & fretwire crowns */}
       <rect x="64" y="196" width="262" height="44" rx="6" fill="var(--muted)" stroke="var(--border)" />
@@ -259,18 +270,22 @@ const FretwireCrossSectionScene: React.FC<{ frame: number; fps: number }> = ({ f
       {/* Flat collapsed finger far from right fretwire */}
       <g transform={`translate(154, ${132 + fingerPressT * 42})`}>
         <ellipse cx="0" cy="0" rx="28" ry="13" fill="#B56357" opacity="0.9" />
-        <text x="0" y="4" textAnchor="middle" fontSize="10" fontWeight="700" fill="#ffffff">평평한 손가락</text>
+        <text x="0" y="4" textAnchor="middle" fontSize="10" fontWeight="700" fill="#ffffff">
+          {isEn ? 'Flat Pad' : '평평한 손가락'}
+        </text>
       </g>
       {/* Jagged buzzing string */}
       <path d={badWave} fill="none" stroke="#B56357" strokeWidth="2.4" />
       <text x="195" y="268" textAnchor="middle" fontSize="11" fontWeight="600" fill="#B56357">
-        프렛쇠에 밀착되지 못해 지이잉 떨림
+        {isEn ? 'Poor wire contact → rattling string buzz' : '프렛쇠에 밀착되지 못해 지이잉 떨림'}
       </text>
 
       {/* RIGHT PANEL: Good Just Behind Fretwire */}
       <rect x="374" y="72" width="302" height="222" rx="12" fill="var(--secondary)" fillOpacity={showGood ? 0.55 : 0.25} stroke={showGood ? '#5C8D76' : 'var(--border)'} strokeWidth={showGood ? 1.8 : 1} />
       <VectorStatusIcon ok={true} x={398} y={96} />
-      <text x="416" y="100" fontSize="12" fontWeight="700" fill="#5C8D76">프렛쇠 2mm 뒤 · 수직 아치형 세우기</text>
+      <text x="416" y="100" fontSize="12" fontWeight="700" fill="#5C8D76">
+        {isEn ? '2mm Behind Fretwire · Upright Arch' : '프렛쇠 2mm 뒤 · 수직 아치형 세우기'}
+      </text>
 
       <rect x="394" y="196" width="262" height="44" rx="6" fill="var(--muted)" stroke="var(--border)" />
       {[450, 590].map((fx) => (
@@ -285,14 +300,15 @@ const FretwireCrossSectionScene: React.FC<{ frame: number; fps: number }> = ({ f
       {/* Clean crystalline string wave */}
       <path d={goodWave} fill="none" stroke="#5C8D76" strokeWidth="2.4" />
       <text x="525" y="268" textAnchor="middle" fontSize="11" fontWeight="700" fill="#5C8D76">
-        가벼운 힘으로도 프렛쇠에 완벽 밀착 · 맑은 음
+        {isEn ? 'Light pressure seals wire cleanly · Pure tone' : '가벼운 힘으로도 프렛쇠에 완벽 밀착 · 맑은 음'}
       </text>
     </g>
   );
 };
 
 /* ── 2. Right-Hand Pick Angle & Wrist Pendulum ─────────────────────────── */
-const PickPendulumScene: React.FC<{ frame: number; fps: number }> = ({ frame, fps }) => {
+const PickPendulumScene: React.FC<{ frame: number; fps: number; locale: Locale }> = ({ frame, fps, locale }) => {
+  const isEn = locale === 'en';
   const phase = (frame % 120) / 120;
   const swingAngle = Math.sin(phase * Math.PI * 2) * 18;
   const isDown = Math.cos(phase * Math.PI * 2) > 0;
@@ -302,13 +318,15 @@ const PickPendulumScene: React.FC<{ frame: number; fps: number }> = ({ frame, fp
   return (
     <g>
       <text x="48" y="54" fontSize="13" fontWeight="700" fill="var(--foreground)">
-        피크 35~40° 사선 각도 & 손목 회전 진자(Down ↓ / Up ↑) — 팔 전체 움직임 금지
+        {isEn
+          ? '35-40° Pick Edge Slant & Wrist Pendulum (Down ↓ / Up ↑) — Relax Entire Arm'
+          : '피크 35~40° 사선 각도 & 손목 회전 진자(Down ↓ / Up ↑) — 팔 전체 움직임 금지'}
       </text>
 
       {/* Left Side: Cross-section of Pick slicing String at 40 deg */}
       <rect x="48" y="72" width="320" height="220" rx="12" fill="var(--secondary)" fillOpacity="0.4" stroke="var(--border)" />
       <text x="208" y="98" textAnchor="middle" fontSize="12" fontWeight="700" fill="var(--foreground)">
-        피크-줄 접촉 각도 (빗겨 치기)
+        {isEn ? 'Pick-to-String Slicing Angle' : '피크-줄 접촉 각도 (빗겨 치기)'}
       </text>
 
       {/* Cross-section strings */}
@@ -324,13 +342,15 @@ const PickPendulumScene: React.FC<{ frame: number; fps: number }> = ({ frame, fp
 
       <rect x="76" y="246" width="264" height="30" rx="8" fill="var(--card)" stroke="var(--border)" />
       <text x="208" y="265" textAnchor="middle" fontSize="11" fontWeight="600" fill="var(--primary)">
-        {isDown ? 'DOWN ↓ 줄을 비스듬히 스치며 통과' : 'UP ↑ 걸림 없이 자연스럽게 복귀'}
+        {isDown
+          ? isEn ? 'DOWN ↓ Glides across string edge' : 'DOWN ↓ 줄을 비스듬히 스치며 통과'
+          : isEn ? 'UP ↑ Snag-free clean return' : 'UP ↑ 걸림 없이 자연스럽게 복귀'}
       </text>
 
       {/* Right Side: Wrist Pivot vs Stiff Arm */}
       <rect x="386" y="72" width="290" height="220" rx="12" fill="var(--secondary)" fillOpacity="0.4" stroke="var(--border)" />
       <text x="531" y="98" textAnchor="middle" fontSize="12" fontWeight="700" fill="var(--foreground)">
-        회전 중심축 비교 (손목 vs 팔꿈치)
+        {isEn ? 'Pivot Axis (Compact Wrist vs Elbow)' : '회전 중심축 비교 (손목 vs 팔꿈치)'}
       </text>
 
       {/* Pendulum arc */}
@@ -340,16 +360,19 @@ const PickPendulumScene: React.FC<{ frame: number; fps: number }> = ({ frame, fp
         <circle cx="0" cy="74" r={10 + pickGlow * 1.5} fill="var(--primary)" />
       </g>
       <circle cx="531" cy="148" r="10" fill="var(--foreground)" />
-      <text x="531" y="132" textAnchor="middle" fontSize="10.5" fontWeight="700" fill="var(--foreground)">손목 회전축</text>
+      <text x="531" y="132" textAnchor="middle" fontSize="10.5" fontWeight="700" fill="var(--foreground)">
+        {isEn ? 'Wrist Pivot' : '손목 회전축'}
+      </text>
       <text x="531" y="266" textAnchor="middle" fontSize="11" fill="var(--muted-foreground)">
-        축이 작을수록 16비트 고속 연주 가능
+        {isEn ? 'Smaller swing radius unlocks fast alternate speeds' : '축이 작을수록 16비트 고속 연주 가능'}
       </text>
     </g>
   );
 };
 
 /* ── 3. Palm Mute Saddle Bridge Placement ──────────────────────────────── */
-const PalmMuteBridgeScene: React.FC<{ frame: number; fps: number }> = ({ frame, fps }) => {
+const PalmMuteBridgeScene: React.FC<{ frame: number; fps: number; locale: Locale }> = ({ frame, fps, locale }) => {
+  const isEn = locale === 'en';
   const phase = Math.floor((frame % 240) / 80); // 0 = PM OK, 1 = Too Far Dead, 2 = Open Lift
   const palmX = phase === 0 ? 182 : phase === 1 ? 268 : 178;
   const palmY = phase === 2 ? 124 : 176;
@@ -367,7 +390,9 @@ const PalmMuteBridgeScene: React.FC<{ frame: number; fps: number }> = ({ frame, 
   return (
     <g>
       <text x="48" y="54" fontSize="13" fontWeight="700" fill="var(--foreground)">
-        오른손 날(Palm) 위치 5mm 차이로 바뀌는 톤 — 브리지 새들 위에서 가볍게 걸치기
+        {isEn
+          ? '5mm Palm Placement Precision — Rest Palm Edge Lightly on Bridge Saddles'
+          : '오른손 날(Palm) 위치 5mm 차이로 바뀌는 톤 — 브리지 새들 위에서 가볍게 걸치기'}
       </text>
 
       <rect x="48" y="72" width="628" height="220" rx="12" fill="var(--secondary)" fillOpacity="0.4" stroke="var(--border)" />
@@ -375,10 +400,14 @@ const PalmMuteBridgeScene: React.FC<{ frame: number; fps: number }> = ({ frame, 
       {/* Guitar Body & Bridge Saddle Silhouette */}
       <rect x="76" y="198" width="576" height="58" rx="6" fill="var(--muted)" stroke="var(--border)" />
       <rect x="136" y="182" width="44" height="18" rx="3" fill="var(--foreground)" opacity="0.7" />
-      <text x="158" y="220" textAnchor="middle" fontSize="10" fontWeight="700" fill="var(--muted-foreground)">브리지 새들</text>
+      <text x="158" y="220" textAnchor="middle" fontSize="10" fontWeight="700" fill="var(--muted-foreground)">
+        {isEn ? 'Bridge Saddle' : '브리지 새들'}
+      </text>
 
       <rect x="242" y="192" width="66" height="12" rx="2" fill="var(--muted-foreground)" opacity="0.4" />
-      <text x="275" y="220" textAnchor="middle" fontSize="10" fill="var(--muted-foreground)">픽업</text>
+      <text x="275" y="220" textAnchor="middle" fontSize="10" fill="var(--muted-foreground)">
+        {isEn ? 'Pickup' : '픽업'}
+      </text>
 
       {/* String & Wave */}
       <path d={wave} fill="none" stroke={phase === 1 ? '#B56357' : phase === 0 ? 'var(--primary)' : '#5C8D76'} strokeWidth="2.8" />
@@ -386,41 +415,52 @@ const PalmMuteBridgeScene: React.FC<{ frame: number; fps: number }> = ({ frame, 
       {/* Palm Heel Silhouette */}
       <g transform={`translate(${palmX}, ${palmY}) scale(${0.96 + 0.04 * smoothPop})`}>
         <rect x="-32" y="-34" width="64" height="36" rx="16" fill={phase === 1 ? '#B56357' : phase === 2 ? '#5C8D76' : 'var(--primary)'} opacity="0.88" />
-        <text x="0" y="-12" textAnchor="middle" fontSize="10.5" fontWeight="700" fill="#ffffff">손날</text>
+        <text x="0" y="-12" textAnchor="middle" fontSize="10.5" fontWeight="700" fill="#ffffff">
+          {isEn ? 'Palm Heel' : '손날'}
+        </text>
       </g>
 
       {/* Phase Status Banner */}
       <VectorStatusIcon ok={phase !== 1} x={86} y={106} />
-      <text x="106" y="110" fontSize="12.5" fontWeight="700" fill="var(--foreground)">
+      <text x="106" y="110" fontSize="12" fontWeight="700" fill="var(--foreground)">
         {phase === 0
-          ? 'O 정확한 팜뮤트: 새들 바로 앞 2mm 가볍게 터치 → 묵직하고 또렷한 저음 타격'
+          ? isEn
+            ? 'OK · Sweet-Spot PM: 2mm ahead of saddle → tight percussive low chug'
+            : 'O 정확한 팜뮤트: 새들 바로 앞 2mm 가볍게 터치 → 묵직하고 또렷한 저음 타격'
           : phase === 1
-            ? 'X 너무 앞으로 이동: 픽업 위까지 덮으면 음정이 죽어 먹통 소리 발생'
-            : 'O 오픈 악센트: 손날을 1cm 살짝 들어 올려 전음역 폭발!'}
+            ? isEn
+              ? 'NO · Too Far Forward: Covering pickups chokes pitch into dead thuds'
+              : 'X 너무 앞으로 이동: 픽업 위까지 덮으면 음정이 죽어 먹통 소리 발생'
+            : isEn
+              ? 'OK · Open Accent: Lift palm heel 1cm for explosive chord ring!'
+              : 'O 오픈 악센트: 손날을 1cm 살짝 들어 올려 전음역 폭발!'}
       </text>
     </g>
   );
 };
 
 /* ── 4. Power Chord Index Flat Touch Mute ──────────────────────────────── */
-const ChordTouchMuteScene: React.FC<{ frame: number; fps: number }> = ({ frame, fps }) => {
+const ChordTouchMuteScene: React.FC<{ frame: number; fps: number; locale: Locale }> = ({ frame, fps, locale }) => {
+  const isEn = locale === 'en';
   const sweepProgress = (frame % 120) / 120;
   const pickY = 82 + sweepProgress * 186;
   const hitPop = spring({ frame: frame % 120, fps, config: { damping: 14, stiffness: 200 } });
 
   const stringRows: Array<{ s: GuitarString; status: 'ring' | 'mute'; label: string }> = [
-    { s: 1, status: 'mute', label: '× 검지 배로 뮤트' },
-    { s: 2, status: 'mute', label: '× 검지 배로 뮤트' },
-    { s: 3, status: 'mute', label: '× 검지 배로 뮤트' },
-    { s: 4, status: 'ring', label: '● 4번 줄 (소지 7F) 울림' },
-    { s: 5, status: 'ring', label: '● 5번 줄 (약지 7F) 울림' },
-    { s: 6, status: 'ring', label: '● 6번 줄 (검지 5F) 울림' },
+    { s: 1, status: 'mute', label: isEn ? '× Muted by Index Pad' : '× 검지 배로 뮤트' },
+    { s: 2, status: 'mute', label: isEn ? '× Muted by Index Pad' : '× 검지 배로 뮤트' },
+    { s: 3, status: 'mute', label: isEn ? '× Muted by Index Pad' : '× 검지 배로 뮤트' },
+    { s: 4, status: 'ring', label: isEn ? '• Str 4 (Pinky 7F) Rings' : '● 4번 줄 (소지 7F) 울림' },
+    { s: 5, status: 'ring', label: isEn ? '• Str 5 (Ring 7F) Rings' : '● 5번 줄 (약지 7F) 울림' },
+    { s: 6, status: 'ring', label: isEn ? '• Str 6 (Index 5F) Rings' : '● 6번 줄 (검지 5F) 울림' },
   ];
 
   return (
     <g>
       <text x="48" y="54" fontSize="12.5" fontWeight="700" fill="var(--foreground)">
-        검지(1) 끝으로 누르고 손가락 배로 아래 1·2·3번 줄을 가볍게 덮어 소음 차단
+        {isEn
+          ? 'Fret Root with Index Tip While Draping Index Underside Lightly Over Strings 1-3'
+          : '검지(1) 끝으로 누르고 손가락 배로 아래 1·2·3번 줄을 가볍게 덮어 소음 차단'}
       </text>
 
       <rect x="48" y="72" width="412" height="220" rx="12" fill="var(--secondary)" fillOpacity="0.4" stroke="var(--border)" />
@@ -486,13 +526,16 @@ const ChordTouchMuteScene: React.FC<{ frame: number; fps: number }> = ({ frame, 
 };
 
 /* ── 5. Anchor Finger & Counter-Thumb Spider Grip ──────────────────────── */
-const AnchorSpiderGripScene: React.FC<{ frame: number; fps: number }> = ({ frame, fps }) => {
+const AnchorSpiderGripScene: React.FC<{ frame: number; fps: number; locale: Locale }> = ({ frame, fps, locale }) => {
+  const isEn = locale === 'en';
   const step = Math.min(4, Math.floor((frame % 200) / 48) + 1);
 
   return (
     <g>
       <text x="48" y="54" fontSize="13" fontWeight="700" fill="var(--foreground)">
-        앵커 핑거(Anchor Finger): 다음 손가락을 짚을 때 이전 손가락을 떼지 말고 지판에 붙이기
+        {isEn
+          ? 'Anchor Finger Law: Keep Earlier Fingers Planted as the Next Finger Steps Up'
+          : '앵커 핑거(Anchor Finger): 다음 손가락을 짚을 때 이전 손가락을 떼지 말고 지판에 붙이기'}
       </text>
 
       {/* Top-down 5-8F Spider Walking */}
@@ -532,31 +575,35 @@ const AnchorSpiderGripScene: React.FC<{ frame: number; fps: number }> = ({ frame
       {/* Right Rear-Neck Thumb Pivot Card */}
       <rect x="452" y="72" width="224" height="220" rx="12" fill="var(--secondary)" fillOpacity="0.45" stroke="var(--border)" />
       <text x="564" y="98" textAnchor="middle" fontSize="12" fontWeight="700" fill="var(--foreground)">
-        넥 뒷면 엄지 중앙 받침점
+        {isEn ? 'Rear-Neck Thumb Center Pivot' : '넥 뒷면 엄지 중앙 받침점'}
       </text>
 
       {/* Neck back profile */}
       <rect x="478" y="132" width="172" height="58" rx="10" fill="var(--card)" stroke="var(--border)" />
       <ellipse cx="564" cy="161" rx="22" ry="15" fill="var(--primary)" opacity="0.88" />
-      <text x="564" y="165" textAnchor="middle" fontSize="10.5" fontWeight="700" fill="#ffffff">엄지 축</text>
+      <text x="564" y="165" textAnchor="middle" fontSize="10.5" fontWeight="700" fill="#ffffff">
+        {isEn ? 'Thumb' : '엄지 축'}
+      </text>
       <path d="M 540 161 L 496 161 M 588 161 L 632 161" stroke="var(--muted-foreground)" strokeWidth="1.8" strokeDasharray="3 3" />
 
       <text x="564" y="218" textAnchor="middle" fontSize="11" fontWeight="600" fill="#5C8D76">
-        O 손바닥이 넥 뒤에 닿지 않고
+        {isEn ? 'OK · Keep palm clear of lower neck' : 'O 손바닥이 넥 뒤에 닿지 않고'}
       </text>
       <text x="564" y="238" textAnchor="middle" fontSize="11" fill="var(--muted-foreground)">
-        엄지 지문만 대어야 4번 소지가 뻗음
+        {isEn ? 'Thumb pad only frees Pinky (4) reach' : '엄지 지문만 대어야 4번 소지가 뻗음'}
       </text>
     </g>
   );
 };
 
 /* ── 6. Legato Snap & Eye-Lead Shifting ────────────────────────────────── */
-const LegatoEyeShiftScene: React.FC<{ frame: number; fps: number; isHammer: boolean }> = ({
+const LegatoEyeShiftScene: React.FC<{ frame: number; fps: number; isHammer: boolean; locale: Locale }> = ({
   frame,
   fps,
   isHammer,
+  locale,
 }) => {
+  const isEn = locale === 'en';
   if (isHammer) {
     const phase = frame < 85 ? 'anchor' : frame < 150 ? 'hammer' : 'pulloff';
     const hammerDrop = phase === 'hammer' ? spring({ frame: frame - 85, fps, config: { damping: 12, stiffness: 240 } }) : phase === 'pulloff' ? 1 : 0;
@@ -565,7 +612,9 @@ const LegatoEyeShiftScene: React.FC<{ frame: number; fps: number; isHammer: bool
     return (
       <g>
         <text x="48" y="54" fontSize="13" fontWeight="700" fill="var(--foreground)">
-          레가토(H · P): 해머링은 망치처럼 수직 타격, 풀오프는 아래로 살짝 튕기듯 떼기!
+          {isEn
+            ? 'Legato (H · P): Drop Vertically for Hammer-On, Snap Slightly Down for Pull-Off!'
+            : '레가토(H · P): 해머링은 망치처럼 수직 타격, 풀오프는 아래로 살짝 튕기듯 떼기!'}
         </text>
         <rect x="48" y="72" width="628" height="220" rx="12" fill="var(--secondary)" fillOpacity="0.4" stroke="var(--border)" />
         {[0, 1, 2, 3].map((f) => (
@@ -593,15 +642,15 @@ const LegatoEyeShiftScene: React.FC<{ frame: number; fps: number; isHammer: bool
           fontWeight="700"
           fill="#ffffff"
         >
-          {phase === 'pulloff' ? 'P 스냅 ↓' : 'H 타격!'}
+          {phase === 'pulloff' ? (isEn ? 'P Snap ↓' : 'P 스냅 ↓') : (isEn ? 'H Strike!' : 'H 타격!')}
         </text>
 
         <text x="362" y="256" textAnchor="middle" fontSize="12" fontWeight="700" fill="var(--primary)">
           {phase === 'anchor'
-            ? '1단계: 검지(5F)를 단단히 짚고 준비'
+            ? isEn ? 'Step 1: Anchor Index (5F) firmly to start' : '1단계: 검지(5F)를 단단히 짚고 준비'
             : phase === 'hammer'
-              ? '2단계(H): 피킹 없이 약지(7F)로 수직 강타!'
-              : '3단계(P): 위로 들지 말고 아래로 뜯듯 떼어 음량 유지!'}
+              ? isEn ? 'Step 2 (H): Strike Ring (7F) straight down without picking!' : '2단계(H): 피킹 없이 약지(7F)로 수직 강타!'
+              : isEn ? 'Step 3 (P): Flick finger gently downward—not straight up—for sustain!' : '3단계(P): 위로 들지 말고 아래로 뜯듯 떼어 음량 유지!'}
         </text>
       </g>
     );
@@ -615,7 +664,9 @@ const LegatoEyeShiftScene: React.FC<{ frame: number; fps: number; isHammer: bool
   return (
     <g>
       <text x="48" y="54" fontSize="13" fontWeight="700" fill="var(--foreground)">
-        시선 선행(Eye-Lead Shifting): 손보다 눈이 0.5박 먼저 목표 프렛(9F)을 바라보면 정밀 이동!
+        {isEn
+          ? 'Eye-Lead Shifting: Spot Target Fret (9F) Half a Beat Ahead Before Hand Slides!'
+          : '시선 선행(Eye-Lead Shifting): 손보다 눈이 0.5박 먼저 목표 프렛(9F)을 바라보면 정밀 이동!'}
       </text>
       <rect x="48" y="72" width="628" height="220" rx="12" fill="var(--secondary)" fillOpacity="0.4" stroke="var(--border)" />
       {[0, 1, 2, 3, 4].map((f) => (
@@ -634,21 +685,22 @@ const LegatoEyeShiftScene: React.FC<{ frame: number; fps: number; isHammer: bool
       <g opacity={gazeArrived ? 1 : 0.2}>
         <circle cx="428" cy="176" r="24" fill="none" stroke="var(--primary)" strokeWidth="2" strokeDasharray="4 3" />
         <text x="428" y="138" textAnchor="middle" fontSize="11" fontWeight="700" fill="var(--primary)">
-          1. 시선 먼저 고정!
+          {isEn ? '1. Lock Eyes First!' : '1. 시선 먼저 고정!'}
         </text>
       </g>
 
       {/* Sliding Finger */}
       <circle cx={handX} cy="176" r="15" fill="#5B7C99" />
       <text x={handX} y="180" textAnchor="middle" fontSize="10.5" fontWeight="700" fill="#ffffff">
-        {handSlideT > 0.85 ? '도착!' : '유지 이동'}
+        {handSlideT > 0.85 ? (isEn ? 'Lock!' : '도착!') : (isEn ? 'Slide' : '유지 이동')}
       </text>
     </g>
   );
 };
 
 /* ── 7. 3-Finger Stacked Bend + Thumb-Over Hinge Pivot ─────────────────── */
-const BendPivotScene: React.FC<{ frame: number; fps: number }> = ({ frame, fps }) => {
+const BendPivotScene: React.FC<{ frame: number; fps: number; locale: Locale }> = ({ frame, fps, locale }) => {
+  const isEn = locale === 'en';
   const pushT = interpolate(frame, [38, 125, 195, 225], [0, 1, 1, 0], { extrapolateLeft: 'clamp', extrapolateRight: 'clamp' });
   const pushY = pushT * 36;
   const wristAngle = -pushT * 22;
@@ -657,7 +709,9 @@ const BendPivotScene: React.FC<{ frame: number; fps: number }> = ({ frame, fps }
   return (
     <g>
       <text x="48" y="54" fontSize="13" fontWeight="700" fill="var(--foreground)">
-        벤딩 정석: 엄지를 넥 위에 걸고 손목 문고리 회전 + 1·2·3번 세 손가락이 함께 밀어올리기
+        {isEn
+          ? 'Bend Leverage: Hook Thumb Over Neck + Wrist Twist + Fingers 1-2-3 Stacked'
+          : '벤딩 정석: 엄지를 넥 위에 걸고 손목 문고리 회전 + 1·2·3번 세 손가락이 함께 밀어올리기'}
       </text>
 
       <rect x="48" y="72" width="400" height="220" rx="12" fill="var(--secondary)" fillOpacity="0.4" stroke="var(--border)" />
@@ -667,7 +721,9 @@ const BendPivotScene: React.FC<{ frame: number; fps: number }> = ({ frame, fps }
 
       {/* Thumb Hooked Over Top Edge */}
       <rect x="150" y="84" width="176" height="24" rx="10" fill="var(--primary)" />
-      <text x="238" y="100" textAnchor="middle" fontSize="10.5" fontWeight="700" fill="#ffffff">엄지 지렛대 축 (상단 걸침)</text>
+      <text x="238" y="100" textAnchor="middle" fontSize="10.5" fontWeight="700" fill="#ffffff">
+        {isEn ? 'Thumb Pivot (Top Edge Hook)' : '엄지 지렛대 축 (상단 걸침)'}
+      </text>
 
       {/* Bent string */}
       <path d={`M 68 214 Q 312 ${214 - pushY} 432 214`} fill="none" stroke="var(--primary)" strokeWidth="2.8" />
@@ -686,58 +742,65 @@ const BendPivotScene: React.FC<{ frame: number; fps: number }> = ({ frame, fps }
 
       {/* Right Doorknob Rotation Indicator */}
       <rect x="466" y="72" width="210" height="220" rx="12" fill="var(--secondary)" fillOpacity="0.45" stroke="var(--border)" />
-      <text x="571" y="98" textAnchor="middle" fontSize="12" fontWeight="700" fill="var(--foreground)">손목 회전 원리</text>
+      <text x="571" y="98" textAnchor="middle" fontSize="12" fontWeight="700" fill="var(--foreground)">
+        {isEn ? 'Doorknob Wrist Rotation' : '손목 회전 원리'}
+      </text>
       <g transform={`translate(571, 174) rotate(${wristAngle})`}>
         <circle cx="0" cy="0" r="34" fill="var(--card)" stroke="var(--primary)" strokeWidth="2" />
         <line x1="-22" y1="0" x2="22" y2="0" stroke="var(--primary)" strokeWidth="4" strokeLinecap="round" />
         <circle cx="22" cy="0" r="5" fill="var(--primary)" />
       </g>
       <text x="571" y="250" textAnchor="middle" fontSize="11" fontWeight="700" fill={pushT > 0.85 ? 'var(--primary)' : 'var(--muted-foreground)'} opacity={0.6 + 0.4 * readyPop}>
-        {pushT > 0.85 ? '손가락 혼자 힘 X → 3손가락 합력!' : '엄지 축으로 손목을 위로 회전'}
+        {pushT > 0.85
+          ? isEn ? '3 Fingers Together + Wrist Pivot!' : '손가락 혼자 힘 X → 3손가락 합력!'
+          : isEn ? 'Rotate forearm around thumb hinge' : '엄지 축으로 손목을 위로 회전'}
       </text>
     </g>
   );
 };
 
 /* ── 8. Phase IV Ear-Copy & COMP/SOLO Role Switch Posture ──────────────── */
-const EarCompJamScene: React.FC<{ frame: number; fps: number }> = ({ frame, fps }) => {
+const EarCompJamScene: React.FC<{ frame: number; fps: number; locale: Locale }> = ({ frame, fps, locale }) => {
+  const isEn = locale === 'en';
   const isSolo = frame >= 120;
   const pop = spring({ frame: isSolo ? frame - 120 : frame, fps, config: { damping: 14, stiffness: 200 } });
 
   return (
     <g>
       <text x="48" y="54" fontSize="13" fontWeight="700" fill="var(--foreground)">
-        실전 잼 자세 전환: COMP(반주 · 안정 그립) ↔ SOLO(호흡 · 비브라토 표현 그립)
+        {isEn
+          ? 'Live Jam Role Switching: COMP (Steady Rhythm Grip) ↔ SOLO (Vocal Phrasing)'
+          : '실전 잼 자세 전환: COMP(반주 · 안정 그립) ↔ SOLO(호흡 · 비브라토 표현 그립)'}
       </text>
 
       <rect x="48" y="76" width="296" height="212" rx="12" fill="var(--secondary)" fillOpacity={!isSolo ? 0.55 : 0.25} stroke={!isSolo ? 'var(--primary)' : 'var(--border)'} strokeWidth={!isSolo ? 2 : 1} />
       <text x="196" y="106" textAnchor="middle" fontSize="14" fontWeight="800" fill={!isSolo ? 'var(--primary)' : 'var(--foreground)'}>
-        1. COMP (리듬 코드 반주)
+        {isEn ? '1. COMP (Rhythm Chords)' : '1. COMP (리듬 코드 반주)'}
       </text>
       <text x="196" y="136" textAnchor="middle" fontSize="11.5" fill="var(--muted-foreground)">
-        • 1·2박 깔끔한 트라이어드 커팅
+        {isEn ? '• Crisp triad stabs on beats 1 & 2' : '• 1·2박 깔끔한 트라이어드 커팅'}
       </text>
       <text x="196" y="160" textAnchor="middle" fontSize="11.5" fill="var(--muted-foreground)">
-        • 오른손 16비트 셔플 고스트 스트로크
+        {isEn ? '• Loose 16th ghost groove scratches' : '• 오른손 16비트 셔플 고스트 스트로크'}
       </text>
       <rect x="116" y="196" width="160" height="34" rx="8" fill={!isSolo ? 'var(--primary)' : 'var(--card)'} stroke="var(--border)" transform={!isSolo ? `translate(${196 * (1 - (0.95 + 0.05 * pop))}, ${213 * (1 - (0.95 + 0.05 * pop))}) scale(${0.95 + 0.05 * pop})` : undefined} />
       <text x="196" y="217" textAnchor="middle" fontSize="11" fontWeight="700" fill={!isSolo ? '#ffffff' : 'var(--muted-foreground)'}>
-        반주 공간 내어주기
+        {isEn ? 'Leave Pocket Room' : '반주 공간 내어주기'}
       </text>
 
       <rect x="374" y="76" width="302" height="212" rx="12" fill="var(--secondary)" fillOpacity={isSolo ? 0.55 : 0.25} stroke={isSolo ? 'var(--primary)' : 'var(--border)'} strokeWidth={isSolo ? 2 : 1} />
       <text x="525" y="106" textAnchor="middle" fontSize="14" fontWeight="800" fill={isSolo ? 'var(--primary)' : 'var(--foreground)'}>
-        2. SOLO (선율 · 필인 응답)
+        {isEn ? '2. SOLO (Melodic Fills)' : '2. SOLO (선율 · 필인 응답)'}
       </text>
       <text x="525" y="136" textAnchor="middle" fontSize="11.5" fill="var(--muted-foreground)">
-        • 3·4박 빈 공간에 짧은 3음 모티프 삽입
+        {isEn ? '• Answer beats 3-4 with 3-note motifs' : '• 3·4박 빈 공간에 짧은 3음 모티프 삽입'}
       </text>
       <text x="525" y="160" textAnchor="middle" fontSize="11.5" fill="var(--muted-foreground)">
-        • 귀로 높낮이/코드톤 먼저 듣고 프렛 연결
+        {isEn ? '• Aim for chord tones via ear contour' : '• 귀로 높낮이/코드톤 먼저 듣고 프렛 연결'}
       </text>
       <rect x="445" y="196" width="160" height="34" rx="8" fill={isSolo ? 'var(--primary)' : 'var(--card)'} stroke="var(--border)" />
       <text x="525" y="217" textAnchor="middle" fontSize="11" fontWeight="700" fill={isSolo ? '#ffffff' : 'var(--muted-foreground)'}>
-        호흡과 여백 유지
+        {isEn ? 'Keep Breathing Rests' : '호흡과 여백 유지'}
       </text>
     </g>
   );

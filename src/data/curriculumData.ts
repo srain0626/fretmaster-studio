@@ -1,11 +1,17 @@
 import type { Lesson, LessonCategory } from '@/types/guitar';
+import type { Locale } from '@/lib/i18n';
 import { MODULES } from './modulesMeta';
 import { PHASE_1_LESSONS } from './lessonsPhase1';
 import { PHASE_2_LESSONS } from './lessonsPhase2';
 import { PHASE_3_LESSONS } from './lessonsPhase3';
 import { PHASE_4_LESSONS } from './lessonsPhase4';
+import {
+  CATEGORY_LABELS_EN,
+  localizeLesson,
+  localizeModule,
+} from './curriculumEn';
 
-export { MODULES };
+export { MODULES, CATEGORY_LABELS_EN, localizeLesson, localizeModule };
 
 export const ALL_LESSONS: Lesson[] = [
   ...PHASE_1_LESSONS,
@@ -24,6 +30,10 @@ export const CATEGORY_LABELS: Record<'all' | LessonCategory, string> = {
   solos: '유명 솔로',
   expression: '귀카피·즉흥 랩',
 };
+
+export function getCategoryLabel(cat: 'all' | LessonCategory, locale: Locale): string {
+  return locale === 'en' ? CATEGORY_LABELS_EN[cat] : CATEGORY_LABELS[cat];
+}
 
 export function getLessonById(id: string): Lesson | undefined {
   return ALL_LESSONS.find((l) => l.id === id);

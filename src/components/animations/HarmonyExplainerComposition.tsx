@@ -5,10 +5,12 @@ import { interpolate, spring, useCurrentFrame, useVideoConfig } from 'remotion';
 import type { GuitarString, Lesson } from '@/types/guitar';
 import { getFingerColorHex, getIntervalLabel, getNoteMidi } from '@/lib/musicTheory';
 import { guitarSynthEngine } from '@/lib/guitarSynthEngine';
+import type { Locale } from '@/lib/i18n';
 import type { VideoAudioCue } from './ExplainerVideoShell';
 
 export interface HarmonyCompositionProps {
   lesson: Lesson;
+  locale?: Locale;
   [key: string]: unknown;
 }
 
@@ -39,31 +41,32 @@ export function resolveHarmonyVariant(lesson: Lesson): HarmonyVariant {
   return 'chord-tone-lead';
 }
 
-export function getHarmonyMotionLabel(lesson: Lesson): string {
+export function getHarmonyMotionLabel(lesson: Lesson, locale: Locale = 'ko'): string {
+  const isEn = locale === 'en';
   const variant = resolveHarmonyVariant(lesson);
   switch (variant) {
     case 'open-strings':
-      return '화성 구조 · 6줄 개방현 & 4도 간격';
+      return isEn ? 'Harmony · Open Strings & 4ths' : '화성 구조 · 6줄 개방현 & 4도 간격';
     case 'octave-geometry':
-      return '화성 구조 · 지판 옥타브 기하학';
+      return isEn ? 'Harmony · Fretboard Octave Shape' : '화성 구조 · 지판 옥타브 기하학';
     case 'interval-steps':
-      return '화성 구조 · 반음/온음 파형 간격';
+      return isEn ? 'Harmony · Half/Whole Step Waves' : '화성 구조 · 반음/온음 파형 간격';
     case 'triad-morph':
-      return '화성 구조 · 장3도 vs 단3도 변환';
+      return isEn ? 'Harmony · Major vs Minor 3rd' : '화성 구조 · 장3도 vs 단3도 변환';
     case 'powerchord-wave':
-      return '화성 구조 · 1+5+8 파워코드 파형';
+      return isEn ? 'Harmony · 1+5+8 Power Chord Stack' : '화성 구조 · 1+5+8 파워코드 파형';
     case 'progression-arc':
-      return '화성 구조 · 코드 진행 긴장과 이완';
+      return isEn ? 'Harmony · Progression Tension Arc' : '화성 구조 · 코드 진행 긴장과 이완';
     case 'relative-flip':
-      return '화성 구조 · A 마이너 ↔ C 메이저 나란한조';
+      return isEn ? 'Harmony · Am ↔ C Relative Roots' : '화성 구조 · A 마이너 ↔ C 메이저 나란한조';
     case 'pentatonic-box':
-      return '화성 구조 · 펜타토닉 5음 골격';
+      return isEn ? 'Harmony · 5-Note Pentatonic Frame' : '화성 구조 · 펜타토닉 5음 골격';
     case 'scale-color-fill':
-      return '화성 구조 · 펜타토닉 + 컬러 노트 확장';
+      return isEn ? 'Harmony · Pentatonic + Color Tones' : '화성 구조 · 펜타토닉 + 컬러 노트 확장';
     case 'bend-pitch-lock':
-      return '화성 구조 · 목표 음정(+200c) 벤딩 도달';
+      return isEn ? 'Harmony · Target Pitch (+200c) Bend' : '화성 구조 · 목표 음정(+200c) 벤딩 도달';
     case 'chord-tone-lead':
-      return '화성 구조 · 코드 체인지 타겟 착지';
+      return isEn ? 'Harmony · Chord-Tone Landing' : '화성 구조 · 코드 체인지 타겟 착지';
   }
 }
 
@@ -296,7 +299,10 @@ function getStringY(stringNum: GuitarString, topY: number, gap: number): number 
   return topY + (stringNum - 1) * gap;
 }
 
-export const HarmonyExplainerComposition: React.FC<HarmonyCompositionProps> = ({ lesson }) => {
+export const HarmonyExplainerComposition: React.FC<HarmonyCompositionProps> = ({
+  lesson,
+  locale = 'ko',
+}) => {
   const frame = useCurrentFrame();
   const { fps } = useVideoConfig();
   const variant = resolveHarmonyVariant(lesson);
@@ -319,28 +325,28 @@ export const HarmonyExplainerComposition: React.FC<HarmonyCompositionProps> = ({
       </defs>
       <rect width="720" height="320" fill="url(#harmonyDotGrid)" />
 
-      {variant === 'open-strings' && <OpenStringsScene frame={frame} fps={fps} />}
-      {variant === 'octave-geometry' && <OctaveGeometryScene frame={frame} fps={fps} />}
+      {variant === 'open-strings' && <OpenStringsScene frame={frame} fps={fps} locale={locale} />}
+      {variant === 'octave-geometry' && <OctaveGeometryScene frame={frame} fps={fps} locale={locale} />}
       {variant === 'interval-steps' && (
-        <IntervalStepsScene frame={frame} fps={fps} lesson={lesson} />
+        <IntervalStepsScene frame={frame} fps={fps} lesson={lesson} locale={locale} />
       )}
-      {variant === 'triad-morph' && <TriadMorphScene frame={frame} fps={fps} />}
+      {variant === 'triad-morph' && <TriadMorphScene frame={frame} fps={fps} locale={locale} />}
       {variant === 'powerchord-wave' && (
-        <PowerChordWaveScene frame={frame} fps={fps} isPalmMute={lesson.id === 'm3-2'} />
+        <PowerChordWaveScene frame={frame} fps={fps} isPalmMute={lesson.id === 'm3-2'} locale={locale} />
       )}
       {variant === 'progression-arc' && (
-        <ProgressionArcScene frame={frame} fps={fps} lesson={lesson} />
+        <ProgressionArcScene frame={frame} fps={fps} lesson={lesson} locale={locale} />
       )}
-      {variant === 'relative-flip' && <RelativeFlipScene frame={frame} fps={fps} />}
+      {variant === 'relative-flip' && <RelativeFlipScene frame={frame} fps={fps} locale={locale} />}
       {variant === 'pentatonic-box' && (
-        <PentatonicBoxScene frame={frame} fps={fps} lesson={lesson} />
+        <PentatonicBoxScene frame={frame} fps={fps} lesson={lesson} locale={locale} />
       )}
       {variant === 'scale-color-fill' && (
-        <ScaleColorFillScene frame={frame} fps={fps} lesson={lesson} />
+        <ScaleColorFillScene frame={frame} fps={fps} lesson={lesson} locale={locale} />
       )}
-      {variant === 'bend-pitch-lock' && <BendPitchLockScene frame={frame} fps={fps} />}
+      {variant === 'bend-pitch-lock' && <BendPitchLockScene frame={frame} fps={fps} locale={locale} />}
       {variant === 'chord-tone-lead' && (
-        <ChordToneLeadScene frame={frame} fps={fps} lesson={lesson} />
+        <ChordToneLeadScene frame={frame} fps={fps} lesson={lesson} locale={locale} />
       )}
     </svg>
   );
@@ -361,7 +367,8 @@ const OPEN_STRING_SPECS: Array<{
   { str: 1, note: 'E4', hz: 330, cueFrame: 190 },
 ];
 
-const OpenStringsScene: React.FC<{ frame: number; fps: number }> = ({ frame, fps }) => {
+const OpenStringsScene: React.FC<{ frame: number; fps: number; locale: Locale }> = ({ frame, fps, locale }) => {
+  const isEn = locale === 'en';
   const neckX = 64;
   const neckW = 370;
   const topY = 72;
@@ -370,7 +377,7 @@ const OpenStringsScene: React.FC<{ frame: number; fps: number }> = ({ frame, fps
   return (
     <g>
       <text x="64" y="54" fontSize="13" fontWeight="700" fill="var(--foreground)">
-        굵은 6번 줄(저음) → 얇은 1번 줄(고음) 개방현 계단
+        {isEn ? 'Open String Tuning Ladder: Low 6th (E2) → High 1st (E4)' : '굵은 6번 줄(저음) → 얇은 1번 줄(고음) 개방현 계단'}
       </text>
 
       {/* Nut */}
@@ -452,15 +459,15 @@ const OpenStringsScene: React.FC<{ frame: number; fps: number }> = ({ frame, fps
         stroke="var(--border)"
       />
       <text x="484" y="88" fontSize="12" fontWeight="700" fill="var(--foreground)">
-        인접 줄 음정 규칙
+        {isEn ? 'Adjacent String Intervals' : '인접 줄 음정 규칙'}
       </text>
 
       {[
-        { pair: '6E → 5A', rule: '+5 프렛 (완전4도)', isException: false, y: 118 },
-        { pair: '5A → 4D', rule: '+5 프렛 (완전4도)', isException: false, y: 150 },
-        { pair: '4D → 3G', rule: '+5 프렛 (완전4도)', isException: false, y: 182 },
-        { pair: '3G → 2B', rule: '+4 프렛 (장3도 예외)', isException: true, y: 214 },
-        { pair: '2B → 1E', rule: '+5 프렛 (완전4도)', isException: false, y: 246 },
+        { pair: '6E → 5A', rule: isEn ? '+5 Frets (P4)' : '+5 프렛 (완전4도)', isException: false, y: 118 },
+        { pair: '5A → 4D', rule: isEn ? '+5 Frets (P4)' : '+5 프렛 (완전4도)', isException: false, y: 150 },
+        { pair: '4D → 3G', rule: isEn ? '+5 Frets (P4)' : '+5 프렛 (완전4도)', isException: false, y: 182 },
+        { pair: '3G → 2B', rule: isEn ? '+4 Frets (M3 Exception)' : '+4 프렛 (장3도 예외)', isException: true, y: 214 },
+        { pair: '2B → 1E', rule: isEn ? '+5 Frets (P4)' : '+5 프렛 (완전4도)', isException: false, y: 246 },
       ].map((row, i) => {
         const highlight =
           frame >= OPEN_STRING_SPECS[i].cueFrame &&
@@ -505,7 +512,8 @@ const OpenStringsScene: React.FC<{ frame: number; fps: number }> = ({ frame, fps
 };
 
 /* ── 2. Octave Geometry Scene (2-down + 2-right) ────────────────────────── */
-const OctaveGeometryScene: React.FC<{ frame: number; fps: number }> = ({ frame, fps }) => {
+const OctaveGeometryScene: React.FC<{ frame: number; fps: number; locale: Locale }> = ({ frame, fps, locale }) => {
+  const isEn = locale === 'en';
   const isSecondHalf = frame >= 120;
   const localFrame = isSecondHalf ? frame - 120 : frame;
   const rootPos = isSecondHalf ? { str: 5 as GuitarString, fret: 3, label: 'C' } : { str: 6 as GuitarString, fret: 5, label: 'A' };
@@ -534,7 +542,9 @@ const OctaveGeometryScene: React.FC<{ frame: number; fps: number }> = ({ frame, 
   return (
     <g>
       <text x="56" y="54" fontSize="13" fontWeight="700" fill="var(--foreground)">
-        옥타브 도형 공식: [2줄 아래] + [2프렛 오른쪽] = 1옥타브 ({rootPos.label} → {octPos.label})
+        {isEn
+          ? `Octave Rule: [2 Strings Down] + [2 Frets Right] = 1 Octave (${rootPos.label} → ${octPos.label})`
+          : `옥타브 도형 공식: [2줄 아래] + [2프렛 오른쪽] = 1옥타브 (${rootPos.label} → ${octPos.label})`}
       </text>
 
       {/* Fretboard Frame */}
@@ -568,9 +578,9 @@ const OctaveGeometryScene: React.FC<{ frame: number; fps: number }> = ({ frame, 
       />
       {downProgress > 0.4 && (
         <g opacity={downProgress}>
-          <rect x={rx - 74} y={(ry + oy) / 2 - 11} width="64" height="20" rx="5" fill="var(--card)" stroke="var(--primary)" strokeWidth="1" />
-          <text x={rx - 42} y={(ry + oy) / 2 + 3} textAnchor="middle" fontSize="10" fontWeight="700" fill="var(--primary)">
-            2줄 아래
+          <rect x={rx - 80} y={(ry + oy) / 2 - 11} width="72" height="20" rx="5" fill="var(--card)" stroke="var(--primary)" strokeWidth="1" />
+          <text x={rx - 44} y={(ry + oy) / 2 + 3} textAnchor="middle" fontSize="10" fontWeight="700" fill="var(--primary)">
+            {isEn ? '2 Strings ↓' : '2줄 아래'}
           </text>
         </g>
       )}
@@ -590,7 +600,7 @@ const OctaveGeometryScene: React.FC<{ frame: number; fps: number }> = ({ frame, 
         <g opacity={rightProgress}>
           <rect x={(rx + ox) / 2 - 44} y={oy - 28} width="88" height="20" rx="5" fill="var(--card)" stroke="var(--primary)" strokeWidth="1" />
           <text x={(rx + ox) / 2} y={oy - 14} textAnchor="middle" fontSize="10" fontWeight="700" fill="var(--primary)">
-            +2프렛 오른쪽
+            {isEn ? '+2 Frets →' : '+2프렛 오른쪽'}
           </text>
         </g>
       )}
@@ -613,11 +623,13 @@ const OctaveGeometryScene: React.FC<{ frame: number; fps: number }> = ({ frame, 
 };
 
 /* ── 3. Interval Half/Whole Steps & Acoustic Wave Scene ─────────────────── */
-const IntervalStepsScene: React.FC<{ frame: number; fps: number; lesson: Lesson }> = ({
+const IntervalStepsScene: React.FC<{ frame: number; fps: number; lesson: Lesson; locale: Locale }> = ({
   frame,
   fps,
   lesson,
+  locale,
 }) => {
+  const isEn = locale === 'en';
   const uniqueNotes = React.useMemo(() => {
     const out: Array<{ string: GuitarString; fret: number; finger: number }> = [];
     const seen = new Set<string>();
@@ -669,7 +681,9 @@ const IntervalStepsScene: React.FC<{ frame: number; fps: number; lesson: Lesson 
   return (
     <g>
       <text x="56" y="54" fontSize="13" fontWeight="700" fill="var(--foreground)">
-        프렛 간격 = 음정 거리 (반음 +1F · 온음 +2F) — 현재: {intervalTxt} ({semis >= 0 ? `+${semis}` : semis} 반음)
+        {isEn
+          ? `Fret Span = Interval (Half +1F · Whole +2F) — Current: ${intervalTxt} (${semis >= 0 ? `+${semis}` : semis} st)`
+          : `프렛 간격 = 음정 거리 (반음 +1F · 온음 +2F) — 현재: ${intervalTxt} (${semis >= 0 ? `+${semis}` : semis} 반음)`}
       </text>
 
       <rect x={left} y={topY - 8} width={right - left} height={gap * 5 + 16} rx="8" fill="var(--secondary)" fillOpacity="0.35" stroke="var(--border)" />
@@ -735,7 +749,9 @@ const IntervalStepsScene: React.FC<{ frame: number; fps: number; lesson: Lesson 
       {/* Acoustic Frequency Strip */}
       <rect x="56" y="218" width="612" height="74" rx="10" fill="var(--secondary)" fillOpacity="0.45" stroke="var(--border)" />
       <text x="72" y="238" fontSize="11" fontWeight="600" fill="var(--muted-foreground)">
-        음고(Pitch) 주파수 파형 — 프렛이 올라갈수록 진동이 촘촘해짐
+        {isEn
+          ? 'Pitch Frequency Wave — Tighter oscillation as pitch climbs up frets'
+          : '음고(Pitch) 주파수 파형 — 프렛이 올라갈수록 진동이 촘촘해짐'}
       </text>
       <path d={wavePath} fill="none" stroke="var(--primary)" strokeWidth="2.2" />
     </g>
@@ -743,7 +759,8 @@ const IntervalStepsScene: React.FC<{ frame: number; fps: number; lesson: Lesson 
 };
 
 /* ── 4. Triad Morph (Major 3rd vs Minor 3rd) ───────────────────────────── */
-const TriadMorphScene: React.FC<{ frame: number; fps: number }> = ({ frame, fps }) => {
+const TriadMorphScene: React.FC<{ frame: number; fps: number; locale: Locale }> = ({ frame, fps, locale }) => {
+  const isEn = locale === 'en';
   const isMinor = frame >= 120;
   const shiftT = interpolate(frame, [110, 140], [0, 1], { extrapolateLeft: 'clamp', extrapolateRight: 'clamp' });
   const thirdFret = 6 - shiftT;
@@ -761,7 +778,9 @@ const TriadMorphScene: React.FC<{ frame: number; fps: number }> = ({ frame, fps 
   return (
     <g>
       <text x="52" y="54" fontSize="13" fontWeight="700" fill="var(--foreground)">
-        3도 1프렛 법칙: 루트(R)와 5도(5)는 그대로, 3도만 1칸 내리면 장3화음 → 단3화음
+        {isEn
+          ? 'One-Fret 3rd Rule: Hold Root & 5th Steady, Slide Only 3rd Down 1 Fret (Major → Minor)'
+          : '3도 1프렛 법칙: 루트(R)와 5도(5)는 그대로, 3도만 1칸 내리면 장3화음 → 단3화음'}
       </text>
 
       {/* Mini 4-string Fretboard (4,3,2,1) */}
@@ -800,10 +819,22 @@ const TriadMorphScene: React.FC<{ frame: number; fps: number }> = ({ frame, fps 
           {isMinor ? 'A Minor (Am)' : 'A Major (A)'}
         </text>
         <text x="0" y="6" textAnchor="middle" fontSize="12" fontWeight="600" fill="var(--primary)">
-          {isMinor ? 'R - b3(단3도) - 5 · 반음 내려감 (-1F)' : 'R - M3(장3도) - 5 · 기본 6프렛'}
+          {isMinor
+            ? isEn
+              ? 'R - b3 (Minor 3rd) - 5 · Down 1 Fret (-1F)'
+              : 'R - b3(단3도) - 5 · 반음 내려감 (-1F)'
+            : isEn
+            ? 'R - M3 (Major 3rd) - 5 · Default 6F'
+            : 'R - M3(장3도) - 5 · 기본 6프렛'}
         </text>
         <text x="0" y="34" textAnchor="middle" fontSize="11.5" fill="var(--muted-foreground)">
-          {isMinor ? '서정적이고 깊이 있는 마이너 색채' : '명쾌하고 밝은 메이저 울림'}
+          {isMinor
+            ? isEn
+              ? 'Warm, moody Minor coloration'
+              : '서정적이고 깊이 있는 마이너 색채'
+            : isEn
+            ? 'Bright, open Major resonance'
+            : '명쾌하고 밝은 메이저 울림'}
         </text>
       </g>
       <path
@@ -817,11 +848,13 @@ const TriadMorphScene: React.FC<{ frame: number; fps: number }> = ({ frame, fps 
 };
 
 /* ── 5. Power Chord & Dynamics Wave Scene ──────────────────────────────── */
-const PowerChordWaveScene: React.FC<{ frame: number; fps: number; isPalmMute: boolean }> = ({
+const PowerChordWaveScene: React.FC<{ frame: number; fps: number; isPalmMute: boolean; locale: Locale }> = ({
   frame,
   fps,
   isPalmMute,
+  locale,
 }) => {
+  const isEn = locale === 'en';
   const showFifth = frame >= 70;
   const showOctave = frame >= 140;
   const step3 = frame >= 188;
@@ -836,7 +869,13 @@ const PowerChordWaveScene: React.FC<{ frame: number; fps: number; isPalmMute: bo
   return (
     <g>
       <text x="52" y="54" fontSize="13" fontWeight="700" fill="var(--foreground)">
-        {isPalmMute ? '팜뮤트(PM) 억제 파형 vs 오픈(Open) 폭발 다이나믹' : '파워코드(1 + 5 + 8) 배음 결합 · 3도 생략으로 왜곡 없는 클린/록 톤'}
+        {isPalmMute
+          ? isEn
+            ? 'Palm Mute (PM) Damped Pulse vs Explosive Open Accent Dynamics'
+            : '팜뮤트(PM) 억제 파형 vs 오픈(Open) 폭발 다이나믹'
+          : isEn
+          ? 'Power Chord (1 + 5 + 8) Overtones · Omitting the 3rd Keeps Gain Tight'
+          : '파워코드(1 + 5 + 8) 배음 결합 · 3도 생략으로 왜곡 없는 클린/록 톤'}
       </text>
 
       {/* Mini Chord Stack Diagram */}
@@ -855,7 +894,7 @@ const PowerChordWaveScene: React.FC<{ frame: number; fps: number; isPalmMute: bo
       </g>
       <g opacity={showFifth ? 1 : 0.2}>
         <circle cx="261" cy={96 + 4 * 28} r="13" fill="#B88648" />
-        <text x="261" y={96 + 4 * 28 + 4} textAnchor="middle" fontSize="10.5" fontWeight="700" fill="#ffffff">5도</text>
+        <text x="261" y={96 + 4 * 28 + 4} textAnchor="middle" fontSize="10.5" fontWeight="700" fill="#ffffff">{isEn ? '5th' : '5도'}</text>
       </g>
       <g opacity={showOctave ? 1 : 0.2}>
         <circle cx="261" cy={96 + 3 * 28} r="13" fill="var(--primary)" />
@@ -864,12 +903,24 @@ const PowerChordWaveScene: React.FC<{ frame: number; fps: number; isPalmMute: bo
 
       {/* Right Wave Comparison */}
       <rect x="398" y="70" width="290" height="206" rx="12" fill="var(--secondary)" fillOpacity="0.4" stroke="var(--border)" />
-      <text x="414" y="92" fontSize="10.5" fontWeight="600" fill="var(--muted-foreground)">Root (1x 주파수)</text>
+      <text x="414" y="92" fontSize="10.5" fontWeight="600" fill="var(--muted-foreground)">
+        {isEn ? 'Root (1x Fundamental)' : 'Root (1x 주파수)'}
+      </text>
       <path d={wave1} fill="none" stroke="#5B7C99" strokeWidth="2" />
-      <text x="414" y="144" fontSize="10.5" fontWeight="600" fill="var(--muted-foreground)">Perfect 5th (1.5x 조화비)</text>
+      <text x="414" y="144" fontSize="10.5" fontWeight="600" fill="var(--muted-foreground)">
+        {isEn ? 'Perfect 5th (1.5x Consonant Ratio)' : 'Perfect 5th (1.5x 조화비)'}
+      </text>
       <path d={wave5} fill="none" stroke="#B88648" strokeWidth="2" opacity={showFifth ? 1 : 0.2} />
       <text x="414" y="200" fontSize="11" fontWeight="700" fill="var(--primary)">
-        {isPalmMute ? (step3 ? 'OPEN 악센트 (전음역 개방)' : showOctave ? 'PM 구간 (저음부 타격 억제)' : 'PM + Open 대비') : '합성 사운드 (단단한 파워코드)'}
+        {isPalmMute
+          ? step3
+            ? isEn ? 'OPEN Accent (Full Spectrum Release)' : 'OPEN 악센트 (전음역 개방)'
+            : showOctave
+            ? isEn ? 'PM Zone (Damped Bass Chug)' : 'PM 구간 (저음부 타격 억제)'
+            : isEn ? 'PM vs Open Contrast' : 'PM + Open 대비'
+          : isEn
+          ? 'Summed Power Waveform (Tight Punch)'
+          : '합성 사운드 (단단한 파워코드)'}
       </text>
       <path d={waveSum} fill="none" stroke="var(--primary)" strokeWidth="2.4" />
     </g>
@@ -877,22 +928,31 @@ const PowerChordWaveScene: React.FC<{ frame: number; fps: number; isPalmMute: bo
 };
 
 /* ── 6. Progression Tension/Release Arc ────────────────────────────────── */
-const ProgressionArcScene: React.FC<{ frame: number; fps: number; lesson: Lesson }> = ({
+const ProgressionArcScene: React.FC<{ frame: number; fps: number; lesson: Lesson; locale: Locale }> = ({
   frame,
   fps,
   lesson,
+  locale,
 }) => {
+  const isEn = locale === 'en';
   const defaultChords = [
-    { name: 'C (I)', role: '집 · 안정', height: 220 },
-    { name: 'G (V)', role: '긴장 · 끌림', height: 120 },
-    { name: 'Am (vi)', role: '서정 · 대리', height: 156 },
-    { name: 'F (IV)', role: '확장 · 준비', height: 142 },
+    { name: 'C (I)', role: isEn ? 'Home' : '집 · 안정', height: 220 },
+    { name: 'G (V)', role: isEn ? 'Tension' : '긴장 · 끌림', height: 120 },
+    { name: 'Am (vi)', role: isEn ? 'Lyrical' : '서정 · 대리', height: 156 },
+    { name: 'F (IV)', role: isEn ? 'Lift' : '확장 · 준비', height: 142 },
   ];
   const chords =
     lesson.chordProgression.length >= 4
       ? lesson.chordProgression.slice(0, 4).map((c, idx) => ({
           name: c.chordName,
-          role: idx === 0 ? '출발/중심' : idx === 1 ? '전개/확장' : idx === 2 ? '긴장/고조' : '해결 준비',
+          role:
+            idx === 0
+              ? isEn ? 'Center' : '출발/중심'
+              : idx === 1
+              ? isEn ? 'Expand' : '전개/확장'
+              : idx === 2
+              ? isEn ? 'Peak' : '긴장/고조'
+              : isEn ? 'Resolve' : '해결 준비',
           height: [216, 134, 152, 128][idx % 4],
         }))
       : defaultChords;
@@ -908,7 +968,9 @@ const ProgressionArcScene: React.FC<{ frame: number; fps: number; lesson: Lesson
   return (
     <g>
       <text x="52" y="54" fontSize="13" fontWeight="700" fill="var(--foreground)">
-        코드 진행 에너지 곡선 — 긴장이 쌓였다가 I(집)으로 되돌아오는 힘
+        {isEn
+          ? 'Chord Progression Energy Arc — Building Harmonic Tension & Returning Home to I'
+          : '코드 진행 에너지 곡선 — 긴장이 쌓였다가 I(집)으로 되돌아오는 힘'}
       </text>
 
       <rect x="52" y="72" width="616" height="186" rx="12" fill="var(--secondary)" fillOpacity="0.35" stroke="var(--border)" />
@@ -964,7 +1026,8 @@ const AM_BOX_DOTS: Array<{ str: GuitarString; fret: number; isA: boolean; isC: b
   { str: 1, fret: 8, isA: false, isC: true },
 ];
 
-const RelativeFlipScene: React.FC<{ frame: number; fps: number }> = ({ frame, fps }) => {
+const RelativeFlipScene: React.FC<{ frame: number; fps: number; locale: Locale }> = ({ frame, fps, locale }) => {
+  const isEn = locale === 'en';
   const isCMajor = frame >= 120;
   const pop = spring({ frame: isCMajor ? frame - 120 : frame, fps, config: { damping: 14, stiffness: 180 } });
 
@@ -976,7 +1039,9 @@ const RelativeFlipScene: React.FC<{ frame: number; fps: number }> = ({ frame, fp
   return (
     <g>
       <text x="58" y="54" fontSize="13" fontWeight="700" fill="var(--foreground)">
-        구성음 100% 동일 · 시작하는 주인공 음(Root)만 바꾸면 분위기 완전 반전
+        {isEn
+          ? '100% Identical Fret Notes — Shifting Only Your Home Root Note Flips the Mood'
+          : '구성음 100% 동일 · 시작하는 주인공 음(Root)만 바꾸면 분위기 완전 반전'}
       </text>
 
       <rect x={left} y={topY - 12} width={fretW * 4} height={gap * 5 + 24} rx="8" fill="var(--secondary)" fillOpacity="0.4" stroke="var(--border)" />
@@ -1030,27 +1095,29 @@ const RelativeFlipScene: React.FC<{ frame: number; fps: number }> = ({ frame, fp
         strokeWidth="2"
       />
       <text x="414" y="114" fontSize="13.5" fontWeight="700" fill={!isCMajor ? 'var(--primary)' : 'var(--muted-foreground)'}>
-        A 마이너 (Root = A)
+        {isEn ? 'A Minor (Root = A)' : 'A 마이너 (Root = A)'}
       </text>
       <text x="414" y="136" fontSize="11.5" fill="var(--muted-foreground)">
-        블루스·록·애절한 솔로 중심축
+        {isEn ? 'Rock, Blues & Soulful Minor Center' : '블루스·록·애절한 솔로 중심축'}
       </text>
       <text x="414" y="200" fontSize="13.5" fontWeight="700" fill={isCMajor ? 'var(--primary)' : 'var(--muted-foreground)'}>
-        C 메이저 (Root = C)
+        {isEn ? 'C Major (Root = C)' : 'C 메이저 (Root = C)'}
       </text>
       <text x="414" y="222" fontSize="11.5" fill="var(--muted-foreground)">
-        팝·컨트리·밝고 경쾌한 멜로디 중심축
+        {isEn ? 'Pop, Country & Bright Major Lift' : '팝·컨트리·밝고 경쾌한 멜로디 중심축'}
       </text>
     </g>
   );
 };
 
 /* ── 8. Pentatonic Box Builder & Shift ─────────────────────────────────── */
-const PentatonicBoxScene: React.FC<{ frame: number; fps: number; lesson: Lesson }> = ({
+const PentatonicBoxScene: React.FC<{ frame: number; fps: number; lesson: Lesson; locale: Locale }> = ({
   frame,
   fps,
   lesson,
+  locale,
 }) => {
+  const isEn = locale === 'en';
   const isSlide = lesson.id === 'm4-3';
   const revealCount = Math.floor(interpolate(frame, [0, 180], [2, 12], { extrapolateRight: 'clamp' }));
   const slideShift = isSlide ? interpolate(frame, [130, 185], [0, 1], { extrapolateLeft: 'clamp', extrapolateRight: 'clamp' }) : 0;
@@ -1063,7 +1130,13 @@ const PentatonicBoxScene: React.FC<{ frame: number; fps: number; lesson: Lesson 
   return (
     <g>
       <text x="56" y="54" fontSize="13" fontWeight="700" fill="var(--foreground)">
-        {isSlide ? '1번 박스(5~8F) → 3번 줄 슬라이드로 2번 박스(8~10F) 탈출 연결' : 'Am 코드톤(A-C-E-G) + 4도(D) = 실패 없는 5음 펜타토닉 1번 박스'}
+        {isSlide
+          ? isEn
+            ? 'Box 1 (5-8F) → Slide 3rd String Into Box 2 (8-10F) Upper Register'
+            : '1번 박스(5~8F) → 3번 줄 슬라이드로 2번 박스(8~10F) 탈출 연결'
+          : isEn
+          ? 'Am7 Chord Tones (A-C-E-G) + 4th (D) = Foolproof 5-Note Pentatonic Box 1'
+          : 'Am 코드톤(A-C-E-G) + 4도(D) = 실패 없는 5음 펜타토닉 1번 박스'}
       </text>
 
       <rect x={left} y={topY - 12} width={fretW * 6} height={gap * 5 + 24} rx="8" fill="var(--secondary)" fillOpacity="0.35" stroke="var(--border)" />
@@ -1115,11 +1188,13 @@ const PentatonicBoxScene: React.FC<{ frame: number; fps: number; lesson: Lesson 
 };
 
 /* ── 9. Layer 4: Pentatonic + 2 Color Notes / Blue Note Fill ───────────── */
-const ScaleColorFillScene: React.FC<{ frame: number; fps: number; lesson: Lesson }> = ({
+const ScaleColorFillScene: React.FC<{ frame: number; fps: number; lesson: Lesson; locale: Locale }> = ({
   frame,
   fps,
   lesson,
+  locale,
 }) => {
+  const isEn = locale === 'en';
   const isBlueNote = lesson.id === 'm5-2';
   const showColor = frame >= 75;
   const colorPop = showColor ? spring({ frame: frame - 75, fps, config: { damping: 14, stiffness: 200 } }) : 0;
@@ -1146,7 +1221,13 @@ const ScaleColorFillScene: React.FC<{ frame: number; fps: number; lesson: Lesson
   return (
     <g>
       <text x="56" y="54" fontSize="13" fontWeight="700" fill="var(--foreground)">
-        {isBlueNote ? '펜타토닉 5음 뼈대 + 크로매틱 블루 노트(b5) 긴장과 해결' : '펜타토닉 5음 뼈대 위에 컬러 노트(2도·b6도)를 얹어 7음 스케일 완성'}
+        {isBlueNote
+          ? isEn
+            ? 'Pentatonic 5-Note Skeleton + Chromatic Blue Note (b5) Tension & Release'
+            : '펜타토닉 5음 뼈대 + 크로매틱 블루 노트(b5) 긴장과 해결'
+          : isEn
+          ? 'Layer Just 2 Color Tones (2nd & b6th) Onto Pentatonic to Complete Full 7-Note Scale'
+          : '펜타토닉 5음 뼈대 위에 컬러 노트(2도·b6도)를 얹어 7음 스케일 완성'}
       </text>
 
       <rect x={left} y={topY - 12} width={fretW * 5} height={gap * 5 + 24} rx="8" fill="var(--secondary)" fillOpacity="0.35" stroke="var(--border)" />
@@ -1204,17 +1285,22 @@ const ScaleColorFillScene: React.FC<{ frame: number; fps: number; lesson: Lesson
       {/* Legend */}
       <rect x="536" y="76" width="154" height="106" rx="10" fill="var(--secondary)" fillOpacity="0.45" stroke="var(--border)" />
       <circle cx="556" cy="108" r="7" fill="var(--card)" stroke="var(--muted-foreground)" strokeWidth="1.5" />
-      <text x="572" y="112" fontSize="11" fill="var(--muted-foreground)">펜타토닉 기본 5음</text>
+      <text x="572" y="112" fontSize="11" fill="var(--muted-foreground)">
+        {isEn ? 'Pentatonic 5 Notes' : '펜타토닉 기본 5음'}
+      </text>
       <circle cx="556" cy="144" r="8" fill="var(--primary)" opacity={showColor ? 1 : 0.35} />
       <text x="572" y="148" fontSize="11" fontWeight="700" fill="var(--foreground)">
-        {isBlueNote ? '블루노트(b5) 해결' : '추가 컬러 음정'}
+        {isBlueNote
+          ? isEn ? 'Blue Note (b5) Pull' : '블루노트(b5) 해결'
+          : isEn ? 'Added Color Notes' : '추가 컬러 음정'}
       </text>
     </g>
   );
 };
 
 /* ── 10. Bend Pitch-Up Lock Scene (6-3, 8-4) ───────────────────────────── */
-const BendPitchLockScene: React.FC<{ frame: number; fps: number }> = ({ frame, fps }) => {
+const BendPitchLockScene: React.FC<{ frame: number; fps: number; locale: Locale }> = ({ frame, fps, locale }) => {
+  const isEn = locale === 'en';
   const bendPct = interpolate(frame, [52, 130, 195, 225], [0, 1, 1, 0], { extrapolateLeft: 'clamp', extrapolateRight: 'clamp' });
   const locked = bendPct > 0.94;
   const lockPop = locked ? spring({ frame: Math.max(0, frame - 130), fps, config: { damping: 14, stiffness: 200 } }) : 0;
@@ -1225,7 +1311,9 @@ const BendPitchLockScene: React.FC<{ frame: number; fps: number }> = ({ frame, f
   return (
     <g>
       <text x="52" y="54" fontSize="13" fontWeight="700" fill="var(--foreground)">
-        3번 줄 7F(4도 D) → 줄 밀어올려 9F(5도 E) 목표 음정 정확히 도달하기 (+200 cents)
+        {isEn
+          ? '3rd Str 7F (4th: D) → Bend Smoothly to Match Target Pitch 9F (5th: E, +200 cents)'
+          : '3번 줄 7F(4도 D) → 줄 밀어올려 9F(5도 E) 목표 음정 정확히 도달하기 (+200 cents)'}
       </text>
 
       {/* Left String Push Visualization */}
@@ -1246,7 +1334,7 @@ const BendPitchLockScene: React.FC<{ frame: number; fps: number }> = ({ frame, f
       {/* Ghost target pitch dot at 9F */}
       <circle cx="299" cy={stringBaseY} r="12" fill="none" stroke="var(--primary)" strokeDasharray="3 3" strokeWidth="1.5" opacity="0.65" />
       <text x="299" y={stringBaseY + 4} textAnchor="middle" fontSize="10" fontWeight="700" fill="var(--primary)" opacity="0.8">
-        E(목표)
+        {isEn ? 'E (Target)' : 'E(목표)'}
       </text>
 
       {/* Bending String */}
@@ -1262,7 +1350,7 @@ const BendPitchLockScene: React.FC<{ frame: number; fps: number }> = ({ frame, f
       {/* Right Pitch Cent Gauge */}
       <rect x="448" y="72" width="224" height="202" rx="12" fill="var(--secondary)" fillOpacity="0.45" stroke={locked ? 'var(--primary)' : 'var(--border)'} strokeWidth="1.5" />
       <text x="560" y="102" textAnchor="middle" fontSize="12" fontWeight="700" fill="var(--foreground)">
-        실시간 피치 도달 게이지
+        {isEn ? 'Live Target Pitch Gauge' : '실시간 피치 도달 게이지'}
       </text>
       <rect x="484" y="124" width="152" height="14" rx="7" fill="var(--card)" stroke="var(--border)" />
       <rect x="484" y="124" width={152 * bendPct} height="14" rx="7" fill="var(--primary)" />
@@ -1272,7 +1360,7 @@ const BendPitchLockScene: React.FC<{ frame: number; fps: number }> = ({ frame, f
       <g transform={`translate(560, 218) scale(${0.8 + 0.2 * lockPop})`}>
         <rect x="-74" y="-14" width="148" height="28" rx="14" fill={locked ? 'var(--primary)' : 'var(--card)'} stroke="var(--border)" />
         <text x="0" y="4" textAnchor="middle" fontSize="11" fontWeight="700" fill={locked ? '#ffffff' : 'var(--muted-foreground)'}>
-          {locked ? '목표 음 E 도달!' : '음정 상승 중…'}
+          {locked ? (isEn ? 'Target E Locked!' : '목표 음 E 도달!') : (isEn ? 'Raising Pitch…' : '음정 상승 중…')}
         </text>
       </g>
     </g>
@@ -1280,11 +1368,13 @@ const BendPitchLockScene: React.FC<{ frame: number; fps: number }> = ({ frame, f
 };
 
 /* ── 11. Layer 5 Chord-Tone Landing (Module 5-4 / 7 / 8 / 9) ───────────── */
-const ChordToneLeadScene: React.FC<{ frame: number; fps: number; lesson: Lesson }> = ({
+const ChordToneLeadScene: React.FC<{ frame: number; fps: number; lesson: Lesson; locale: Locale }> = ({
   frame,
   fps,
   lesson,
+  locale,
 }) => {
+  const isEn = locale === 'en';
   const chords =
     lesson.chordProgression.length > 0
       ? lesson.chordProgression.slice(0, 4).map((c) => c.chordName)
@@ -1306,7 +1396,9 @@ const ChordToneLeadScene: React.FC<{ frame: number; fps: number; lesson: Lesson 
   return (
     <g>
       <text x="56" y="54" fontSize="13" fontWeight="700" fill="var(--foreground)">
-        코드가 바뀔 때 주인공 음(Chord Tone · 3도/루트)에 정확히 착지하기
+        {isEn
+          ? 'Nail Chord Tones (3rd / Root) Right on Every Chord Change'
+          : '코드가 바뀔 때 주인공 음(Chord Tone · 3도/루트)에 정확히 착지하기'}
       </text>
 
       {/* Top Chord Timeline Pills */}
@@ -1364,11 +1456,21 @@ const ChordToneLeadScene: React.FC<{ frame: number; fps: number; lesson: Lesson 
 
       {/* Right Summary Box */}
       <rect x="514" y="114" width="174" height="148" rx="10" fill="var(--secondary)" fillOpacity="0.45" stroke="var(--border)" />
-      <text x="530" y="140" fontSize="11.5" fontWeight="700" fill="var(--foreground)">솔로 타겟 팁</text>
-      <text x="530" y="166" fontSize="11" fill="var(--muted-foreground)">• 코드 변경 첫 박자에</text>
-      <text x="530" y="184" fontSize="11" fill="var(--primary)" fontWeight="600">  3도 또는 루트 착지</text>
-      <text x="530" y="212" fontSize="11" fill="var(--muted-foreground)">• 다음 박자는 쉼표(호흡)</text>
-      <text x="530" y="238" fontSize="11" fill="var(--muted-foreground)">• 문장 끝 비브라토 유지</text>
+      <text x="530" y="140" fontSize="11.5" fontWeight="700" fill="var(--foreground)">
+        {isEn ? 'Solo Target Tip' : '솔로 타겟 팁'}
+      </text>
+      <text x="530" y="166" fontSize="11" fill="var(--muted-foreground)">
+        {isEn ? '• On Beat 1 chord switch:' : '• 코드 변경 첫 박자에'}
+      </text>
+      <text x="530" y="184" fontSize="11" fill="var(--primary)" fontWeight="600">
+        {isEn ? '  Land on 3rd or Root' : '  3도 또는 루트 착지'}
+      </text>
+      <text x="530" y="212" fontSize="11" fill="var(--muted-foreground)">
+        {isEn ? '• Next beat: Leave rests' : '• 다음 박자는 쉼표(호흡)'}
+      </text>
+      <text x="530" y="238" fontSize="11" fill="var(--muted-foreground)">
+        {isEn ? '• Sustain phrase vibrato' : '• 문장 끝 비브라토 유지'}
+      </text>
     </g>
   );
 };

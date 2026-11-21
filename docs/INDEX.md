@@ -1,6 +1,6 @@
 # FretMaster Docs Index (AI-First Reference)
 
-> **Service:** FretMaster Studio — Interactive Korean electric guitar learning app combining beginner mechanics, 5-layer harmony, ear copy, and low-latency DSP pitch judgment.
+> **Service:** FretMaster Studio — Bilingual (EN/KO) interactive electric guitar learning app combining beginner mechanics, 5-layer harmony, ear copy, and low-latency DSP pitch judgment.
 > **Token Rule:** Read **only** the doc mapped to your task below. Do not bulk-read `src/data/lessonsPhase*.ts` or `src/app/page.tsx` unless editing them.
 
 ## Stack (Exact Versions)
@@ -32,7 +32,8 @@
 GuitarTeacher/
 ├── AGENTS.md                         # Next.js agent rules + doc router
 ├── LICENSE                           # GNU GPL-3.0 full license text
-├── README.md                         # Showcase README, roadmap, copyright & AI guide
+├── README.md                         # Global English showcase README, roadmap & AI guide
+├── README.ko.md                      # Korean README edition
 ├── next.config.ts                    # Turbopack root & CSS rule, cacheComponents
 ├── components.json                   # shadcn base-nova config
 ├── docs/assets/                      # README hero thumbnail & Light/Dark previews
@@ -41,18 +42,21 @@ GuitarTeacher/
 └── src/
     ├── types/guitar.ts               # Canonical domain & telemetry interfaces
     ├── lib/
+    │   ├── i18n.tsx                  # EN/KO LocaleProvider, navigator auto-detect & tr()
     │   ├── musicTheory.ts            # MIDI, frequency, interval, muted 4-finger colors
     │   ├── guitarSynthEngine.ts      # Web Audio guitar synth & lookahead transport
     │   ├── lowLatencyAudioEngine.ts  # Worklet/Analyser/ASIO capture + scoring math
     │   └── utils.ts                  # `cn` re-export
     ├── data/
-    │   ├── modulesMeta.ts            # 9 modules (Phase I-IV) metadata
+    │   ├── modulesMeta.ts            # 9 modules (Phase I-IV) metadata (KO source)
+    │   ├── curriculumEn.ts           # English translations for categories, 9 modules, 39 lessons
+    │   ├── coachingNotesEn.ts        # English lookup table for all note coaching tips
     │   ├── curriculumHelpers.ts      # `buildNotes`, `makeChordBar`, scale overlays
     │   ├── lessonsPhase1.ts          # 8 lessons (m1-1..m2-4)
     │   ├── lessonsPhase2.ts          # 12 lessons (m3-1..m5-4)
     │   ├── lessonsPhase3.ts          # 15 lessons (m6-1..m8-6)
     │   ├── lessonsPhase4.ts          # 4 lessons (m9-1..m9-4)
-    │   └── curriculumData.ts         # Unified `ALL_LESSONS` (39) + lookup helpers
+    │   └── curriculumData.ts         # Unified `ALL_LESSONS` (39) + `localizeLesson` helpers
     ├── app/
     │   ├── globals.css               # Tailwind v4 + HeroUI + Light/Dark CSS vars
     │   ├── layout.tsx                # Fonts, zero-flash theme script, TooltipProvider

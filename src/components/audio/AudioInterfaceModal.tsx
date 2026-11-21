@@ -20,6 +20,7 @@ import {
 } from '@/components/ui/select';
 import { guitarAudioEngine, type AudioLatencyTelemetry } from '@/lib/lowLatencyAudioEngine';
 import { guitarSynthEngine } from '@/lib/guitarSynthEngine';
+import { useLocale } from '@/lib/i18n';
 import type { AudioDeviceConfig, ChannelRouteMode, LivePitchData } from '@/types/guitar';
 
 interface AudioInterfaceModalProps {
@@ -43,6 +44,7 @@ export function AudioInterfaceModal({
   isAudioRunning,
   onRestartAudio,
 }: AudioInterfaceModalProps) {
+  const { tr } = useLocale();
   const [devices, setDevices] = useState<MediaDeviceInfo[]>([]);
   const [calibrating, setCalibrating] = useState(false);
   const [tapErrors, setTapErrors] = useState<number[]>([]);
@@ -113,29 +115,31 @@ export function AudioInterfaceModal({
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="sm:max-w-lg">
         <DialogHeader>
-          <DialogTitle className="text-base font-semibold">오디오 & ASIO 입력 설정</DialogTitle>
+          <DialogTitle className="text-base font-semibold">
+            {tr('Audio & ASIO Input Setup', '오디오 & ASIO 입력 설정')}
+          </DialogTitle>
         </DialogHeader>
 
         <div className="space-y-4">
           <div className="grid grid-cols-3 gap-2 rounded-lg border border-border bg-muted/50 p-3 font-mono text-xs tabular-nums">
             <div>
-              <div className="text-[10px] text-muted-foreground">파이프라인</div>
+              <div className="text-[10px] text-muted-foreground">{tr('Pipeline', '파이프라인')}</div>
               <div className="mt-0.5 font-semibold text-foreground">
                 {telemetry.pipelineMode === 'asio-bridge'
                   ? 'ASIO Bridge'
                   : telemetry.pipelineMode === 'worklet'
                   ? 'Worklet 128'
-                  : '대기'}
+                  : tr('Idle', '대기')}
               </div>
             </div>
             <div>
-              <div className="text-[10px] text-muted-foreground">샘플레이트</div>
+              <div className="text-[10px] text-muted-foreground">{tr('Sample Rate', '샘플레이트')}</div>
               <div className="mt-0.5 font-semibold text-foreground">
                 {telemetry.sampleRate.toLocaleString()} Hz
               </div>
             </div>
             <div>
-              <div className="text-[10px] text-muted-foreground">추정 지연</div>
+              <div className="text-[10px] text-muted-foreground">{tr('Est. Latency', '추정 지연')}</div>
               <div className="mt-0.5 font-semibold text-foreground">
                 {telemetry.totalEstimatedMs.toFixed(1)} ms
               </div>
@@ -150,7 +154,7 @@ export function AudioInterfaceModal({
               onClick={() => onUpdateConfig({ inputMode: 'worklet' })}
             >
               <div>
-                <div className="text-xs font-semibold">저지연 Web Audio</div>
+                <div className="text-xs font-semibold">{tr('Low-Latency Web Audio', '저지연 Web Audio')}</div>
                 <div className="text-[10px] opacity-80">128-sample Worklet</div>
               </div>
             </Button>
@@ -170,7 +174,9 @@ export function AudioInterfaceModal({
           {config.inputMode === 'worklet' && (
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
               <div className="space-y-1.5">
-                <div className="text-xs font-medium text-foreground">입력 디바이스</div>
+                <div className="text-xs font-medium text-foreground">
+                  {tr('Input Device', '입력 디바이스')}
+                </div>
                 <Select
                   value={config.deviceId}
                   onValueChange={(val) => {
@@ -178,13 +184,13 @@ export function AudioInterfaceModal({
                   }}
                 >
                   <SelectTrigger className="text-xs">
-                    <SelectValue placeholder="기본 입력 선택" />
+                    <SelectValue placeholder={tr('Select input device', '기본 입력 선택')} />
                   </SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="default">시스템 기본 입력</SelectItem>
+                    <SelectItem value="default">{tr('System Default Input', '시스템 기본 입력')}</SelectItem>
                     {devices.map((d, i) => (
                       <SelectItem key={d.deviceId || `dev-${i}`} value={d.deviceId || 'default'}>
-                        {d.label || `오디오 입력 ${i + 1}`}
+                        {d.label || tr(`Audio Input ${i + 1}`, `오디오 입력 ${i + 1}`)}
                       </SelectItem>
                     ))}
                   </SelectContent>
@@ -192,7 +198,9 @@ export function AudioInterfaceModal({
               </div>
 
               <div className="space-y-1.5">
-                <div className="text-xs font-medium text-foreground">입력 채널</div>
+                <div className="text-xs font-medium text-foreground">
+                  {tr('Input Channel', '입력 채널')}
+                </div>
                 <Select
                   value={config.channelMode}
                   onValueChange={(val) => {
@@ -214,9 +222,14 @@ export function AudioInterfaceModal({
 
           <div className="flex items-center justify-between rounded-lg border border-border px-3 py-2.5">
             <div>
-              <div className="text-xs font-medium">하드웨어 다이렉트 모니터링</div>
+              <div className="text-xs font-medium">
+                {tr('Hardware Direct Monitor', '하드웨어 다이렉트 모니터링')}
+              </div>
               <div className="text-[11px] text-muted-foreground">
-                외장 앰프나 인터페이스 모니터링 시 브라우저 입력 에코 차단
+                {tr(
+                  'Block browser input echo when using an external amp or interface monitor',
+                  '외장 앰프나 인터페이스 모니터링 시 브라우저 입력 에코 차단'
+                )}
               </div>
             </div>
             <Switch
@@ -228,7 +241,7 @@ export function AudioInterfaceModal({
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
             <div className="space-y-2 rounded-lg border border-border p-3">
               <div className="flex justify-between text-xs">
-                <span>노이즈 게이트</span>
+                <span>{tr('Noise Gate', '노이즈 게이트')}</span>
                 <span className="font-mono tabular-nums">{config.noiseGateDb} dB</span>
               </div>
               <Slider
@@ -244,7 +257,7 @@ export function AudioInterfaceModal({
 
             <div className="space-y-2 rounded-lg border border-border p-3">
               <div className="flex justify-between text-xs">
-                <span>레이턴시 보정</span>
+                <span>{tr('Latency Offset', '레이턴시 보정')}</span>
                 <span className="font-mono tabular-nums">
                   {config.latencyOffsetMs > 0 ? `+${config.latencyOffsetMs}` : config.latencyOffsetMs} ms
                 </span>
@@ -263,13 +276,13 @@ export function AudioInterfaceModal({
 
           <div className="flex items-center justify-between rounded-lg border border-border bg-muted/40 p-3">
             <div>
-              <div className="text-xs font-medium">4-탭 레이턴시 측정</div>
+              <div className="text-xs font-medium">{tr('4-Tap Latency Calibration', '4-탭 레이턴시 측정')}</div>
               <div className="text-[11px] text-muted-foreground">
-                클릭에 맞춰 4회 피킹해 지연 자동 보정
+                {tr('Pick 4 clicks to auto-calibrate round-trip latency', '클릭에 맞춰 4회 피킹해 지연 자동 보정')}
               </div>
               {calibrating && (
                 <Badge variant="secondary" className="mt-1 text-[10px]">
-                  {tapErrors.length}/4회 감지됨
+                  {tr(`${tapErrors.length}/4 detected`, `${tapErrors.length}/4회 감지됨`)}
                 </Badge>
               )}
             </div>
@@ -281,7 +294,7 @@ export function AudioInterfaceModal({
                 disabled={!isAudioRunning || calibrating}
                 onClick={startLatencyCalibration}
               >
-                {calibrating ? '측정 중' : '측정 시작'}
+                {calibrating ? tr('Measuring', '측정 중') : tr('Calibrate', '측정 시작')}
               </Button>
               <Button
                 type="button"
@@ -291,7 +304,7 @@ export function AudioInterfaceModal({
                   onOpenChange(false);
                 }}
               >
-                적용
+                {tr('Apply', '적용')}
               </Button>
             </div>
           </div>

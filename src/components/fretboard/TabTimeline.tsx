@@ -4,6 +4,7 @@ import React from 'react';
 import { Button } from '@/components/ui/button';
 import { DownPickIcon, UpPickIcon } from '@/components/icons/GuitarSvgIcons';
 import { getFingerColorHex } from '@/lib/musicTheory';
+import { useLocale } from '@/lib/i18n';
 import type {
   ChordBar,
   GuitarString,
@@ -51,6 +52,7 @@ export function TabTimeline({
   earCopyUnlockedIndices,
   earCopyHintLevel,
 }: TabTimelineProps) {
+  const { tr } = useLocale();
   const isPhase1 = phaseId === 'phase-1';
   const barIndices = Array.from({ length: totalBars }, (_, i) => i);
   const totalBeats = totalBars * beatsPerBar;
@@ -109,7 +111,7 @@ export function TabTimeline({
                 }`}
               >
                 <span className="font-mono text-[11px] text-muted-foreground">
-                  {bIdx + 1}마디
+                  {tr(`Bar ${bIdx + 1}`, `${bIdx + 1}마디`)}
                 </span>
                 {!isPhase1 && chord && (
                   <span className="font-mono text-xs font-semibold text-foreground">
@@ -129,7 +131,7 @@ export function TabTimeline({
             onClick={() => onLoopRangeChange([0, totalBars - 1])}
           >
             <Repeat className="w-3 h-3 mr-1" />
-            전체
+            {tr('All', '전체')}
           </Button>
         )}
       </div>

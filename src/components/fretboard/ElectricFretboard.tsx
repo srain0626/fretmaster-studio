@@ -18,6 +18,7 @@ import {
   getNoteMidi,
   midiToPitchClassName,
 } from '@/lib/musicTheory';
+import { useLocale } from '@/lib/i18n';
 import type {
   AmpPreset,
   ChordBar,
@@ -106,6 +107,7 @@ export function ElectricFretboard({
   ampPreset,
   onAmpPresetChange,
 }: ElectricFretboardProps) {
+  const { tr } = useLocale();
   const [zoomFocus, setZoomFocus] = useState(true);
   const [showScaleBackdrop, setShowScaleBackdrop] = useState(true);
 
@@ -212,16 +214,16 @@ export function ElectricFretboard({
         {/* Muted 4-Finger Legend */}
         <div className="flex flex-wrap items-center gap-3 text-[11px] text-muted-foreground">
           <span className="inline-flex items-center gap-1.5">
-            <span className="h-2.5 w-2.5 rounded-full bg-[#5B7C99]" /> 1 검지
+            <span className="h-2.5 w-2.5 rounded-full bg-[#5B7C99]" /> {tr('1 Index', '1 검지')}
           </span>
           <span className="inline-flex items-center gap-1.5">
-            <span className="h-2.5 w-2.5 rounded-full bg-[#5C8D76]" /> 2 중지
+            <span className="h-2.5 w-2.5 rounded-full bg-[#5C8D76]" /> {tr('2 Middle', '2 중지')}
           </span>
           <span className="inline-flex items-center gap-1.5">
-            <span className="h-2.5 w-2.5 rounded-full bg-[#B88648]" /> 3 약지
+            <span className="h-2.5 w-2.5 rounded-full bg-[#B88648]" /> {tr('3 Ring', '3 약지')}
           </span>
           <span className="inline-flex items-center gap-1.5">
-            <span className="h-2.5 w-2.5 rounded-full bg-[#B56357]" /> 4 소지
+            <span className="h-2.5 w-2.5 rounded-full bg-[#B56357]" /> {tr('4 Pinky', '4 소지')}
           </span>
         </div>
 
@@ -230,9 +232,9 @@ export function ElectricFretboard({
           <div className="flex items-center gap-1.5">
             {(
               [
-                { id: 'finger', label: '손가락' },
-                { id: 'interval', label: '도수' },
-                { id: 'note', label: '계이름' },
+                { id: 'finger', label: tr('Finger', '손가락') },
+                { id: 'interval', label: tr('Interval', '도수') },
+                { id: 'note', label: tr('Note', '계이름') },
               ] as { id: FretLabelMode; label: string }[]
             ).map((item) => (
               <Button
@@ -254,7 +256,7 @@ export function ElectricFretboard({
               className="text-xs"
               onClick={() => setShowScaleBackdrop((v) => !v)}
             >
-              스케일
+              {tr('Scale', '스케일')}
             </Button>
 
             {isPhase3Or4 && (
@@ -263,7 +265,7 @@ export function ElectricFretboard({
                 size="xs"
                 variant="ghost"
                 onClick={() => setZoomFocus((v) => !v)}
-                title={zoomFocus ? '22프렛 전체 보기' : '집중 구간 확대'}
+                title={zoomFocus ? tr('Show all 22 frets', '22프렛 전체 보기') : tr('Zoom active range', '집중 구간 확대')}
               >
                 {zoomFocus ? <Maximize2 className="w-3.5 h-3.5" /> : <Minimize2 className="w-3.5 h-3.5" />}
               </Button>
@@ -278,7 +280,7 @@ export function ElectricFretboard({
           viewBox={`0 0 ${svgWidth} ${svgHeight}`}
           className="w-full min-w-[640px] h-auto select-none"
           role="img"
-          aria-label="일렉트릭 기타 지판"
+          aria-label={tr('Electric Guitar Fretboard', '일렉트릭 기타 지판')}
         >
           {/* Matte Walnut Wood Surface (Non-neon) */}
           <rect
@@ -592,7 +594,7 @@ export function ElectricFretboard({
       {currentNote?.bendCents && (
         <div className="mx-4 mb-2 flex items-center justify-between gap-3 rounded-lg bg-secondary/70 px-3 py-1.5 text-xs">
           <span className="font-medium text-foreground">
-            벤딩 목표: +{currentNote.bendCents} cents ({currentNote.bendCents >= 200 ? '온음' : '반음'})
+            {tr('Bend Target:', '벤딩 목표:')} +{currentNote.bendCents} cents ({currentNote.bendCents >= 200 ? tr('Whole Step', '온음') : tr('Half Step', '반음')})
           </span>
           <div className="flex items-center gap-2">
             <div className="h-2 w-28 overflow-hidden rounded-full bg-border">
@@ -619,7 +621,7 @@ export function ElectricFretboard({
             size="icon-sm"
             variant="ghost"
             onClick={onReset}
-            title="처음으로"
+            title={tr('Restart', '처음으로')}
           >
             <RotateCcw className="w-3.5 h-3.5" />
           </Button>

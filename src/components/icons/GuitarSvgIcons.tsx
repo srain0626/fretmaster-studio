@@ -229,20 +229,31 @@ export function MasteryRingSvg({
 export function RadarChartSvg({
   skills,
   size = 240,
+  locale = 'ko',
 }: {
   skills: SkillRadarStats;
   size?: number;
+  locale?: 'en' | 'ko';
 }) {
   const cx = size / 2;
   const cy = size / 2;
   const maxR = size * 0.34;
-  const axes: { key: keyof SkillRadarStats; label: string }[] = [
-    { key: 'mechanics', label: '운지 메카닉' },
-    { key: 'fretboardVision', label: '지판·화성 시야' },
-    { key: 'rhythmTiming', label: '리듬 정밀도' },
-    { key: 'earCopy', label: '청음·귀카피' },
-    { key: 'creativePhrasing', label: '반주·즉흥 표현' },
-  ];
+  const axes: { key: keyof SkillRadarStats; label: string }[] =
+    locale === 'en'
+      ? [
+          { key: 'mechanics', label: 'Mechanics' },
+          { key: 'fretboardVision', label: 'Harmony' },
+          { key: 'rhythmTiming', label: 'Rhythm' },
+          { key: 'earCopy', label: 'Ear Copy' },
+          { key: 'creativePhrasing', label: 'Improv' },
+        ]
+      : [
+          { key: 'mechanics', label: '운지 메카닉' },
+          { key: 'fretboardVision', label: '지판·화성 시야' },
+          { key: 'rhythmTiming', label: '리듬 정밀도' },
+          { key: 'earCopy', label: '청음·귀카피' },
+          { key: 'creativePhrasing', label: '반주·즉흥 표현' },
+        ];
 
   const angleStep = (2 * Math.PI) / axes.length;
   const rings = [0.25, 0.5, 0.75, 1];
