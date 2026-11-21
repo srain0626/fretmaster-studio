@@ -12,6 +12,7 @@
   <a href="https://www.remotion.dev/"><img src="https://img.shields.io/badge/Remotion-4.0_Motion-e85d3f?style=for-the-badge" alt="Remotion" /></a>
   <img src="https://img.shields.io/badge/AudioWorklet-YIN_DSP-e85d3f?style=for-the-badge" alt="AudioWorklet DSP" />
   <img src="https://img.shields.io/badge/Curriculum-39_Lessons-3f7d5e?style=for-the-badge" alt="39 Lessons" />
+  <a href="LICENSE"><img src="https://img.shields.io/badge/License-GPLv3-111215?style=for-the-badge" alt="GPL-3.0 License" /></a>
 </p>
 
 <p>
@@ -21,6 +22,8 @@
   <a href="#전체-커리큘럼-4-phases--9-modules--39-lessons">커리큘럼</a> ·
   <a href="#앞으로의-로드맵">로드맵</a> ·
   <a href="#함께-만들어가요-기여-가이드">기여 가이드</a> ·
+  <a href="#ai-agent를-위한-개발--유지보수-가이드">AI Agent 가이드</a> ·
+  <a href="#저작권-및-라이선스-안내">저작권 · 라이선스</a> ·
   <a href="#빠른-시작">빠른 시작</a>
 </p>
 
@@ -264,6 +267,74 @@ fretmaster-studio/
 더 깊은 개발·유지보수 레퍼런스는 [`docs/INDEX.md`](docs/INDEX.md)에서 시작하세요.
 
 </details>
+
+---
+
+## AI Agent를 위한 개발 · 유지보수 가이드
+
+이 저장소는 **Claude Code, Codex, Cursor, Gemini CLI, Antigravity** 등 AI 코딩 에이전트가 최소한의 컨텍스트 토큰만으로 프로젝트 전체를 정확히 수정·확장할 수 있도록 계층형 문서를 기본 내장하고 있습니다.
+
+> [!TIP]
+> **AI Agent 작업 시작 3단계 (Low-Token Protocol)**  
+> 1. **항상 [`AGENTS.md`](AGENTS.md) → [`docs/INDEX.md`](docs/INDEX.md)** 순서로 진입하세요.  
+> 2. 전체 코드나 `src/data/lessonsPhase*.ts`(총 2,600+줄) / `src/app/page.tsx`(1,554줄)를 통째로 읽지 말고, 아래 **작업별 라우팅 표**에 해당하는 **문서 1개(약 50~66줄, ~1,200 토큰)**만 선택해 읽으세요.  
+> 3. 수정 완료 후에는 반드시 검증 게이트(`npm run build` 및 이모지 `0` 스캔)를 통과한 뒤 작업을 종료하세요.
+
+### 작업별 문서 라우팅 맵 (`docs/`)
+
+| 수정하려는 영역 | 필독 문서 (영문 최적화) | 분량 | 핵심 수록 내용 |
+| :--- | :--- | :---: | :--- |
+| 아키텍처 · 상태 · 스토리지 | [`docs/01-ARCHITECTURE.md`](docs/01-ARCHITECTURE.md) | `66L` | 테마 부트 스크립트, `localStorage` 키 3종, 3단 레이아웃, 6가지 연습 모드 |
+| UI 토큰 · 컴포넌트 규격 | [`docs/02-UI-SYSTEM.md`](docs/02-UI-SYSTEM.md) | `56L` | Light/Dark CSS 변수표, 4손가락 팔레트, HeroUI v3 vs Base UI/shadcn 주의사항 |
+| 레슨 · 모듈 · 커리큘럼 | [`docs/03-CURRICULUM.md`](docs/03-CURRICULUM.md) | `52L` | 39개 레슨 ID 인덱스, `buildNotes` 팩토리, 순차 해금 및 승급 점수 공식 |
+| 오디오 DSP · 신스 · 판정 | [`docs/04-AUDIO-DSP.md`](docs/04-AUDIO-DSP.md) | `52L` | `AudioWorklet` YIN 피치/온셋 DSP, ASIO 브리지(`:9420`), `JUDGMENT_TIERS` |
+| Remotion 모션 · 사운드 큐 | [`docs/05-ANIMATIONS.md`](docs/05-ANIMATIONS.md) | `59L` | `ExplainerVideoShell` `resetKey` 규칙, 화성 11종/자세 8종 매핑 및 SVG 안전 구역 |
+| 빌드 · PowerShell · QA | [`docs/06-MAINTENANCE-RUNBOOK.md`](docs/06-MAINTENANCE-RUNBOOK.md) | `47L` | Windows PowerShell `;` 명령어 규칙, 자주 발생하는 함정 6종, 브라우저 QA 절차 |
+
+### AI Agent 필수 준수 가드레일
+
+1. **Zero Emoji / Dingbat (`src/` 전역):** 유니코드 이모지 및 딩뱃 문자(`✔`, `✘`, `\u2600-\u27BF`) 사용을 엄격히 금지합니다. 아이콘은 `lucide-react` 또는 인라인 벡터 SVG `<path>`만 사용하세요.
+2. **Design Restraint & Dual Theme:** 네온 발광(`box-shadow` glow)과 레슨 부제목 추가를 금지하며, SVG 내부 색상까지 `var(--card)`, `var(--foreground)`, `var(--primary)` 등 시맨틱 CSS 변수로 작성해 Light/Dark 모드를 동시 지원해야 합니다.
+3. **HeroUI CSS 캐스케이드 보호:** `src/app/globals.css`의 `.tabs__tab:not([data-selected="true"]) { color: var(--muted-foreground); }` 규칙과 `--muted` 표면 회색 정의를 변경하지 마세요.
+4. **`AGENTS.md` Next.js 블록 보존:** `<!-- BEGIN:nextjs-agent-rules --> ... <!-- END:nextjs-agent-rules -->` 영역은 삭제하지 마세요.
+5. **명시적 TypeScript 계약:** `playSingleGuitarNote` 호출 시 `ArticulationType` 유니온(`'bend-full'`, `'hammer'`, `'pull'`, `'slide-up'` 등)만 전달하고, `getIntervalLabel(midi, rootPitchClass)`은 반드시 인자 2개를 전달해야 합니다.
+6. **PowerShell & 검증 게이트:** Windows PowerShell 5.1 기준 `&&` 대신 `;`으로 명령어를 연결하며, 코드 수정 후 아래 검증을 반드시 실행합니다:
+   ```powershell
+   npm run build; if ($LASTEXITCODE -eq 0) { node -e "const fs=require('fs'),path=require('path'); let hits=0; function walk(d){for(const f of fs.readdirSync(d)){const p=path.join(d,f);if(fs.statSync(p).isDirectory())walk(p);else if(/\.(ts|tsx|css)$/.test(f)){const t=fs.readFileSync(p,'utf8'); const m=t.match(/[\uD83C-\uDBFF][\uDC00-\uDFFF]|[\u2600-\u27BF]/g); if(m){hits+=m.length;console.log(p,m);}}}} walk('src'); console.log('Total emoji/dingbat hits:',hits);" }
+   ```
+
+---
+
+## 저작권 및 라이선스 안내
+
+### 1. 소스 코드 라이선스 (`GNU GPL-3.0`)
+
+```text
+FretMaster Studio
+Copyright (C) 2026 Ray Kim
+```
+
+이 프로젝트의 소스 코드는 **[GNU General Public License v3.0 (GPL-3.0)](LICENSE)** 조건에 따라 배포됩니다.
+
+- **허용되는 사항**: 연구·학습·개인/상업적 목적을 불문하고 누구나 소스코드를 자유롭게 실행, 복제, 분석, 수정 및 재배포할 수 있습니다.
+- **카피레프트(Copyleft) 의무**: 이 프로젝트나 수정·파생된 저작물을 외부에 배포·공개할 경우, 반드시 **동일한 GPL-3.0 라이선스로 전체 소스 코드를 함께 공개**해야 하며 원저작권 표기 및 변경 내역을 유지해야 합니다.
+- 본 소프트웨어는 어떠한 보증("AS IS")도 없이 제공됩니다. 전문은 [`LICENSE`](LICENSE) 파일을 참조하세요.
+
+### 2. 커리큘럼 악곡 · 교육용 에튀드 저작권 고지
+
+- 커리큘럼 내 **Module 7(장르 아카데미)** 및 **Module 8(유명 솔로 단계별 해부 `8-1 ~ 8-6`)**에 포함된 악보·코드 진행·데모 사운드는 특정 아티스트의 상업용 마스터 음원이나 공식 유료 악보·TAB을 복제/재배포하지 **않습니다**.
+- 모든 학습 패턴은 해당 연주 스타일과 화성 기법(예: 펜타토닉 턴어라운드, 서포트 벤딩 프레이징, 12마디 블루스 문답법)을 설명하기 위해 **교육 목적의 오리지널 에튀드** 및 Web Audio 실시간 합성음으로 직접 제작되었습니다.
+- 본문에 참고 스타일로 언급된 아티스트명, 곡 제목 및 브랜드 명칭은 각 권리자의 상표·저작권 자산입니다.
+
+### 3. 서드파티 오픈소스 & 폰트 라이선스 고지
+
+| 구성 요소 | 용도 | 라이선스 |
+| :--- | :--- | :--- |
+| `Next.js`, `React`, `Framer Motion`, `Tailwind CSS` | 프레임워크, 런타임, 모션, 스타일링 | `MIT` |
+| `@heroui/react`, `@heroui/styles` | 스튜디오 Tabs/Surface UI 컴포넌트 | `Apache-2.0` |
+| `lucide-react` | UI 모노라인 아이콘 | `ISC` |
+| `Pretendard`, `Plus Jakarta Sans`, `JetBrains Mono` | 한글·영문·고정폭 모노스페이스 폰트 | `SIL OFL 1.1` |
+| `remotion`, `@remotion/player` | 인터랙티브 화성·자세 설명 모션 플레이어 | [`Remotion License`](https://github.com/remotion-dev/remotion/blob/main/LICENSE.md) *(개인·비영리·임직원 3인 이하 영리 팀 무료, 대규모 상업 조직은 별도 확인 필요)* |
 
 ---
 
