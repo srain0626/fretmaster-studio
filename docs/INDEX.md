@@ -31,9 +31,11 @@
 ```text
 GuitarTeacher/
 ├── AGENTS.md                         # Next.js agent rules + doc router
-├── README.md                         # Human/agent quickstart
-├── next.config.ts                    # Turbopack CSS rule, cacheComponents
+├── LICENSE                           # GNU GPL-3.0 full license text
+├── README.md                         # Showcase README, roadmap, copyright & AI guide
+├── next.config.ts                    # Turbopack root & CSS rule, cacheComponents
 ├── components.json                   # shadcn base-nova config
+├── docs/assets/                      # README hero thumbnail & Light/Dark previews
 ├── public/worklets/
 │   └── guitarPitchWorklet.js         # 128-sample AudioWorklet YIN DSP processor
 └── src/

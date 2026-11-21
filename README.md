@@ -6,6 +6,10 @@
 일렉트릭 기타 학습의 모든 장벽을 낮추기 위해 설계된 오픈 스튜디오 플랫폼
 
 <p>
+  <img src="docs/assets/hero-thumbnail.jpg" alt="FretMaster Studio Thumbnail Banner" width="880" />
+</p>
+
+<p>
   <a href="https://nextjs.org/"><img src="https://img.shields.io/badge/Next.js-16.4-111215?style=for-the-badge&logo=nextdotjs&logoColor=white" alt="Next.js" /></a>
   <a href="https://react.dev/"><img src="https://img.shields.io/badge/React-19.3-111215?style=for-the-badge&logo=react&logoColor=61DAFB" alt="React" /></a>
   <a href="https://www.typescriptlang.org/"><img src="https://img.shields.io/badge/TypeScript-5-111215?style=for-the-badge&logo=typescript&logoColor=3178C6" alt="TypeScript" /></a>
@@ -16,6 +20,7 @@
 </p>
 
 <p>
+  <a href="#스튜디오-프리뷰">프리뷰</a> ·
   <a href="#프로젝트-기획-배경과-목적">기획 배경</a> ·
   <a href="#적용된-음악-교육학--나선형-화성-설계">교육학 설계</a> ·
   <a href="#주요-기능">핵심 기능</a> ·
@@ -36,6 +41,15 @@
 > *"화성학을 오선지 위의 지루한 암기 과목으로 떼어놓지 않고, 내가 짚은 손가락의 간격과 스케일 박스 안에서 **소리 → 운지 → 화성 원리 → 자유 연주**가 하나로 이어지는 일렉트릭 기타 입문 스튜디오"*
 
 <br />
+
+## 스튜디오 프리뷰
+
+| Light Studio · 3단 학습 워크스페이스 (`4-2` 나란한조) | Dark Studio · Remotion 화성/자세 모션 가이드 (`6-3` 벤딩) |
+| :---: | :---: |
+| <img src="docs/assets/studio-light-mode.png" alt="FretMaster Light Studio 3-Column UI" width="440" /> | <img src="docs/assets/guide-dark-mode.png" alt="FretMaster Dark Mode Remotion Guide Modal" width="440" /> |
+| *시스템 연동 Light 테마 · 4색 운지 지판 · 마디별 코드 & TAB 동기화* | *Dark 테마 · 실시간 벤딩 피치 게이지 애니메이션 · Web Audio 동기화* |
+
+---
 
 ## 프로젝트 기획 배경과 목적
 
