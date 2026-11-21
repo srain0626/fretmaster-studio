@@ -1,0 +1,161 @@
+'use client';
+
+import React from 'react';
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+} from '@/components/ui/dialog';
+import { Button } from '@/components/ui/button';
+import { Badge } from '@/components/ui/badge';
+import { TUNING_OPEN_STRINGS } from '@/lib/musicTheory';
+import { guitarSynthEngine } from '@/lib/guitarSynthEngine';
+import type { LivePitchData } from '@/types/guitar';
+import { Volume2 } from 'lucide-react';
+
+interface ChromaticTunerDialogProps {
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
+  livePitch: LivePitchData;
+  isAudioRunning: boolean;
+  onStartAudio: () => void;
+}
+
+export function ChromaticTunerDialog({
+  open,
+  onOpenChange,
+  livePitch,
+  isAudioRunning,
+  onStartAudio,
+}: ChromaticTunerDialogProps) {
+  const cents = Math.max(-50, Math.min(50, livePitch.centsOff));
+  const needleAngleDeg = (cents / 50) * 58;
+  const isInTune = livePitch.isActive && Math.abs(cents) <= 5;
+
+  const nearestOpenString = livePitch.isActive
+    ? TUNING_OPEN_STRINGS.reduce((best, cur) =>
+        Math.abs(cur.midi - livePitch.midiFloat) < Math.abs(best.midi - livePitch.midiFloat)
+          ? cur
+          : best
+      )
+    : null;
+
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent className="sm:max-w-md">
+        <DialogHeader>
+          <DialogTitle className="text-base font-semibold">크로매틱 튜너</DialogTitle>
+        </DialogHeader>
+
+        {!isAudioRunning && (
+          <div className="rounded-lg border border-border bg-secondary/60 p-3 flex items-center justify-between">
+            <span className="text-xs text-muted-foreground">
+              기타 입력을 시작하면 음정이 표시됩니다.
+            </span>
+            <Button size="sm" onClick={onStartAudio}>
+              연결 시작
+            </Button>
+          </div>
+        )}
+
+        <div className="flex flex-col items-center rounded-xl border border-border bg-muted/40 p-5">
+          <svg viewBox="0 0 280 150" className="w-full max-w-[260px] h-auto">
+            <path
+              d="M 35 128 A 105 105 0 0 1 245 128"
+              fill="none"
+              stroke="var(--border)"
+              strokeWidth="4"
+              strokeLinecap="round"
+            />
+            <path
+              d="M 129 24 A 105 105 0 0 1 151 24"
+              fill="none"
+              stroke="#4FA37B"
+              strokeWidth="5"
+              strokeLinecap="round"
+            />
+            {[-50, -25, 0, 25, 50].map((val) => {
+              const rad = ((-90 + (val / 50) * 58) * Math.PI) / 180;
+              const x1 = 140 + Math.cos(rad) * 95;
+              const y1 = 128 + Math.sin(rad) * 95;
+              const x2 = 140 + Math.cos(rad) * 112;
+              const y2 = 128 + Math.sin(rad) * 112;
+              return (
+                <line
+                  key={val}
+                  x1={x1}
+                  y1={y1}
+                  x2={x2}
+                  y2={y2}
+                  stroke={val === 0 ? '#4FA37B' : 'var(--muted-foreground)'}
+                  strokeWidth={val === 0 ? 2 : 1.3}
+                />
+              );
+            })}
+            <g
+              transform={`rotate(${livePitch.isActive ? needleAngleDeg : 0} 140 128)`}
+              className="transition-transform duration-75"
+            >
+              <line
+                x1="140"
+                y1="128"
+                x2="140"
+                y2="34"
+                stroke={!livePitch.isActive ? 'var(--muted-foreground)' : isInTune ? '#4FA37B' : 'var(--primary)'}
+                strokeWidth="2.4"
+                strokeLinecap="round"
+              />
+            </g>
+            <circle cx="140" cy="128" r="5" fill="var(--foreground)" />
+          </svg>
+
+          <div className="mt-2 flex items-baseline gap-3 font-mono tabular-nums">
+            <span className="text-3xl font-bold text-foreground">
+              {livePitch.isActive ? livePitch.noteName : '--'}
+            </span>
+            <span className="text-xs text-muted-foreground">
+              {livePitch.isActive ? `${livePitch.frequency.toFixed(1)} Hz` : '대기 중'}
+            </span>
+          </div>
+
+          <div className="mt-2">
+            {livePitch.isActive ? (
+              <Badge variant={isInTune ? 'default' : 'secondary'}>
+                {isInTune
+                  ? '정확함'
+                  : cents < 0
+                  ? `낮음 (${cents}c) · 조이세요`
+                  : `높음 (+${cents}c) · 푸세요`}
+              </Badge>
+            ) : (
+              <span className="text-xs text-muted-foreground">개방현을 한 줄씩 튕겨 보세요</span>
+            )}
+          </div>
+        </div>
+
+        <div className="grid grid-cols-6 gap-1.5">
+          {TUNING_OPEN_STRINGS.map((st) => {
+            const isDetected =
+              nearestOpenString?.string === st.string &&
+              Math.abs(nearestOpenString.midi - livePitch.midiFloat) < 1.5;
+
+            return (
+              <Button
+                key={st.string}
+                type="button"
+                variant={isDetected ? 'default' : 'outline'}
+                className="flex flex-col h-auto py-2"
+                onClick={() => guitarSynthEngine.playReferenceTone(st.freq, 1.5)}
+              >
+                <span className="text-[10px] opacity-70">{st.string}번</span>
+                <span className="font-mono text-xs font-semibold">{st.label}</span>
+                <Volume2 className="w-3 h-3 mt-1 opacity-60" />
+              </Button>
+            );
+          })}
+        </div>
+      </DialogContent>
+    </Dialog>
+  );
+}
