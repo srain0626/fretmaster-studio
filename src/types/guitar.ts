@@ -229,6 +229,7 @@ export interface UserProgressState {
   lastPracticeDate: string;
   totalCompletedCount: number;
   freeExploreMode: boolean;
+  onboardingCompleted?: boolean;
   skills: SkillRadarStats;
 }
 

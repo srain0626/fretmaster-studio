@@ -96,6 +96,9 @@ export function mergeUserProgress(
     lastPracticeDate,
     totalCompletedCount,
     freeExploreMode: Boolean(local.freeExploreMode || cloud.freeExploreMode),
+    onboardingCompleted: Boolean(
+      local.onboardingCompleted || cloud.onboardingCompleted || totalCompletedCount > 0
+    ),
     skills: {
       mechanics: Math.max(local.skills.mechanics, cloud.skills?.mechanics ?? 0),
       fretboardVision: Math.max(local.skills.fretboardVision, cloud.skills?.fretboardVision ?? 0),
@@ -125,6 +128,22 @@ export async function fetchCloudProgress(userId: string): Promise<CloudProgressP
     return null;
   }
 
+  const rawAudio = (data.audio_config ?? null) as
+    | (Partial<AudioDeviceConfig> & { _onboardingCompleted?: boolean })
+    | null;
+  let onboardingCompletedFromAudio = false;
+  let cleanAudioConfig: AudioDeviceConfig | null = null;
+  if (rawAudio && typeof rawAudio === 'object') {
+    onboardingCompletedFromAudio = Boolean(rawAudio._onboardingCompleted);
+    const { _onboardingCompleted: _omit, ...rest } = rawAudio;
+    void _omit;
+    if (typeof rest.inputMode === 'string') {
+      cleanAudioConfig = rest as AudioDeviceConfig;
+    }
+  }
+
+  const totalCompleted = Number(data.total_completed_count ?? 0);
+
   return {
     progress: {
       lessonRecords: (data.lesson_records ?? {}) as Record<string, LessonProgressRecord>,
@@ -139,11 +158,12 @@ export async function fetchCloudProgress(userId: string): Promise<CloudProgressP
       dailyGoalSeconds: Number(data.daily_goal_seconds ?? 1200),
       dayStreak: Number(data.day_streak ?? 1),
       lastPracticeDate: String(data.last_practice_date ?? ''),
-      totalCompletedCount: Number(data.total_completed_count ?? 0),
+      totalCompletedCount: totalCompleted,
       freeExploreMode: Boolean(data.free_explore_mode),
+      onboardingCompleted: onboardingCompletedFromAudio || totalCompleted > 0,
     },
     lastLessonId: String(data.last_lesson_id || 'm1-1'),
-    audioConfig: (data.audio_config ?? null) as AudioDeviceConfig | null,
+    audioConfig: cleanAudioConfig,
   };
 }
 
@@ -158,6 +178,11 @@ export async function upsertCloudProgress(
   const supabase = createSupabaseBrowserClient();
   if (!supabase) return false;
 
+  const serializedAudioConfig = {
+    ...(payload.audioConfig ?? {}),
+    _onboardingCompleted: Boolean(payload.progress.onboardingCompleted),
+  };
+
   const { error } = await supabase.from('user_progress').upsert(
     {
       user_id: userId,
@@ -170,7 +195,7 @@ export async function upsertCloudProgress(
       total_completed_count: payload.progress.totalCompletedCount,
       free_explore_mode: payload.progress.freeExploreMode,
       last_lesson_id: payload.lastLessonId,
-      audio_config: payload.audioConfig ?? null,
+      audio_config: serializedAudioConfig,
       updated_at: new Date().toISOString(),
     },
     { onConflict: 'user_id' }

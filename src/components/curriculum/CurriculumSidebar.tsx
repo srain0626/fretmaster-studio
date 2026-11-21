@@ -34,6 +34,7 @@ import {
   Compass,
   Ear,
   Grid,
+  HelpCircle,
   Languages,
   Lock,
   LogOut,
@@ -59,6 +60,7 @@ interface CurriculumSidebarProps {
   progress: UserProgressState;
   onToggleFreeExplore: (enabled: boolean) => void;
   onOpenAnalytics: () => void;
+  onOpenOnboarding?: () => void;
   themePreference: ThemePreference;
   onThemeChange: (pref: ThemePreference) => void;
   user?: SidebarUserSummary | null;
@@ -80,6 +82,7 @@ export function CurriculumSidebar({
   progress,
   onToggleFreeExplore,
   onOpenAnalytics,
+  onOpenOnboarding,
   themePreference,
   onThemeChange,
   user,
@@ -255,6 +258,17 @@ export function CurriculumSidebar({
             <BarChart3 className="w-4 h-4" />
             <span>{tr('My Progress', '내 연습 기록')}</span>
           </button>
+
+          {onOpenOnboarding && (
+            <button
+              type="button"
+              onClick={onOpenOnboarding}
+              className="w-full flex items-center gap-2.5 rounded-lg px-2.5 py-2 text-[13px] font-medium text-muted-foreground hover:text-foreground hover:bg-card/60 transition-colors"
+            >
+              <HelpCircle className="w-4 h-4" />
+              <span>{tr('Quick Tour', '튜토리얼 다시 보기')}</span>
+            </button>
+          )}
         </div>
 
         {/* PRACTICE LAB Section */}

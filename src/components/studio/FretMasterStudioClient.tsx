@@ -22,6 +22,7 @@ import { ChromaticTunerDialog } from '@/components/audio/ChromaticTunerDialog';
 import { AudioInterfaceModal } from '@/components/audio/AudioInterfaceModal';
 import type { User } from '@supabase/supabase-js';
 import { AuthGateCard } from '@/components/auth/AuthGateCard';
+import { StudioOnboardingDialog } from '@/components/studio/StudioOnboardingDialog';
 import { CurriculumSidebar } from '@/components/curriculum/CurriculumSidebar';
 import { SkillAnalyticsDialog } from '@/components/curriculum/SkillAnalyticsDialog';
 import { MasteryReportDialog } from '@/components/practice/MasteryReportDialog';
@@ -201,7 +202,8 @@ function AuthenticatedStudioWorkspace({
   const [tunerOpen, setTunerOpen] = useState(false);
   const [audioSetupOpen, setAudioSetupOpen] = useState(false);
   const [analyticsOpen, setAnalyticsOpen] = useState(false);
-  const [guideDialogOpen, setGuideDialogOpen] = useState(true);
+  const [onboardingOpen, setOnboardingOpen] = useState(false);
+  const [guideDialogOpen, setGuideDialogOpen] = useState(false);
   const [guideSection, setGuideSection] = useState<GuideSection>('both');
 
   // Evaluation State
@@ -355,12 +357,24 @@ function AuthenticatedStudioWorkspace({
           if (active) setSyncStatus('error');
         } finally {
           cloudHydratedRef.current = true;
+          if (active) {
+            if (!normalizedMerged.onboardingCompleted && normalizedMerged.totalCompletedCount === 0) {
+              setOnboardingOpen(true);
+            } else {
+              setGuideDialogOpen(true);
+            }
+          }
         }
       })
       .catch(() => {
         if (!active) return;
         cloudHydratedRef.current = true;
         setSyncStatus('error');
+        if (!localProgress.onboardingCompleted && localProgress.totalCompletedCount === 0) {
+          setOnboardingOpen(true);
+        } else {
+          setGuideDialogOpen(true);
+        }
       });
 
     return () => {
@@ -1229,6 +1243,7 @@ function AuthenticatedStudioWorkspace({
             setProgress((prev) => ({ ...prev, freeExploreMode: enabled }))
           }
           onOpenAnalytics={() => setAnalyticsOpen(true)}
+          onOpenOnboarding={() => setOnboardingOpen(true)}
           themePreference={themePreference}
           onThemeChange={setThemePreference}
           user={{
@@ -1705,6 +1720,37 @@ function AuthenticatedStudioWorkspace({
       </div>
 
       {/* ==================== DIALOGS ==================== */}
+      <StudioOnboardingDialog
+        open={onboardingOpen}
+        onOpenChange={setOnboardingOpen}
+        userName={
+          (user.user_metadata?.full_name as string | undefined) ??
+          (user.user_metadata?.name as string | undefined) ??
+          user.email?.split('@')[0]
+        }
+        initialFreeExplore={progress.freeExploreMode}
+        initialDailyGoalSeconds={progress.dailyGoalSeconds}
+        isAudioRunning={isAudioRunning}
+        onConnectAudio={handleToggleAudio}
+        onOpenAudioSetup={() => setAudioSetupOpen(true)}
+        onComplete={({ freeExploreMode, dailyGoalSeconds }) => {
+          setProgress((prev) => ({
+            ...prev,
+            onboardingCompleted: true,
+            freeExploreMode,
+            dailyGoalSeconds,
+          }));
+          setOnboardingOpen(false);
+          setGuideSection('both');
+          setGuideDialogOpen(true);
+        }}
+        onSkip={() => {
+          setProgress((prev) =>
+            prev.onboardingCompleted ? prev : { ...prev, onboardingCompleted: true }
+          );
+        }}
+      />
+
       <LessonGuideDialog
         open={guideDialogOpen}
         onOpenChange={setGuideDialogOpen}
