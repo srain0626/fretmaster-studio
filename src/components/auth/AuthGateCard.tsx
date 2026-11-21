@@ -5,6 +5,7 @@ import Link from 'next/link';
 import { BrandFretLogo } from '@/components/icons/GuitarSvgIcons';
 import { Button } from '@/components/ui/button';
 import { useAuth } from '@/lib/auth';
+import { sanitizeLogLine } from '@/lib/errorSanitizer';
 import { useLocale } from '@/lib/i18n';
 import { useThemePreference } from '@/lib/theme';
 import { ArrowLeft, Cloud, Lock, Monitor, Moon, ShieldCheck, Sun } from 'lucide-react';
@@ -60,7 +61,9 @@ export function AuthGateCard() {
           'Google sign-in session could not be verified. Please try again.',
           'Google 로그인 세션을 확인하지 못했습니다. 다시 시도해 주세요.'
         )
-      : authError;
+      : authError
+      ? sanitizeLogLine(authError)
+      : null;
 
   return (
     <div className="min-h-screen bg-background text-foreground flex flex-col">

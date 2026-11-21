@@ -22,6 +22,7 @@ import { ChromaticTunerDialog } from '@/components/audio/ChromaticTunerDialog';
 import { AudioInterfaceModal } from '@/components/audio/AudioInterfaceModal';
 import type { User } from '@supabase/supabase-js';
 import { AuthGateCard } from '@/components/auth/AuthGateCard';
+import { ErrorReportDialog } from '@/components/studio/ErrorReportDialog';
 import { StudioOnboardingDialog } from '@/components/studio/StudioOnboardingDialog';
 import { CurriculumSidebar } from '@/components/curriculum/CurriculumSidebar';
 import { SkillAnalyticsDialog } from '@/components/curriculum/SkillAnalyticsDialog';
@@ -55,6 +56,7 @@ import {
 import { guitarSynthEngine } from '@/lib/guitarSynthEngine';
 import { getFingerName, getNoteMidi, midiToNoteName } from '@/lib/musicTheory';
 import { useLocale } from '@/lib/i18n';
+import { buildSafeErrorEntry, type SafeErrorLogEntry } from '@/lib/errorSanitizer';
 import {
   fetchCloudProgress,
   mergeUserProgress,
@@ -203,8 +205,24 @@ function AuthenticatedStudioWorkspace({
   const [audioSetupOpen, setAudioSetupOpen] = useState(false);
   const [analyticsOpen, setAnalyticsOpen] = useState(false);
   const [onboardingOpen, setOnboardingOpen] = useState(false);
+  const [errorModalOpen, setErrorModalOpen] = useState(false);
+  const [errorLogs, setErrorLogs] = useState<SafeErrorLogEntry[]>([]);
   const [guideDialogOpen, setGuideDialogOpen] = useState(false);
   const [guideSection, setGuideSection] = useState<GuideSection>('both');
+
+  const pushSafeError = useCallback(
+    (
+      params: Parameters<typeof buildSafeErrorEntry>[0],
+      openModal = true
+    ) => {
+      const entry = buildSafeErrorEntry(params);
+      setErrorLogs((prev) => [entry, ...prev].slice(0, 20));
+      if (openModal) {
+        setErrorModalOpen(true);
+      }
+    },
+    []
+  );
 
   // Evaluation State
   const [evaluations, setEvaluations] = useState<Record<string, NoteEvaluation>>({});
@@ -353,8 +371,23 @@ function AuthenticatedStudioWorkspace({
             audioConfig: cloud?.audioConfig ?? guitarAudioEngine.getConfig(),
           });
           if (active) setSyncStatus('saved');
-        } catch {
-          if (active) setSyncStatus('error');
+        } catch (err) {
+          if (active) {
+            setSyncStatus('error');
+            pushSafeError(
+              {
+                category: 'sync',
+                code: 'CLOUD_UPSERT_FAILED',
+                title: tr('Cloud Save Delayed', '클라우드 저장 지연'),
+                summary: tr(
+                  'Progress is saved locally, but uploading to cloud storage did not complete.',
+                  '연습 기록은 로컬에 저장되었으나 클라우드 업로드 중 일시적 오류가 발생했습니다.'
+                ),
+                error: err,
+              },
+              false
+            );
+          }
         } finally {
           cloudHydratedRef.current = true;
           if (active) {
@@ -366,10 +399,23 @@ function AuthenticatedStudioWorkspace({
           }
         }
       })
-      .catch(() => {
+      .catch((err) => {
         if (!active) return;
         cloudHydratedRef.current = true;
         setSyncStatus('error');
+        pushSafeError(
+          {
+            category: 'sync',
+            code: 'CLOUD_FETCH_FAILED',
+            title: tr('Cloud Sync Unavailable', '클라우드 동기화 연결 실패'),
+            summary: tr(
+              'Unable to load remote progress right now; running from local cache.',
+              '원격 진도 데이터를 불러오지 못해 로컬 캐시 기준으로 실행합니다.'
+            ),
+            error: err,
+          },
+          false
+        );
         if (!localProgress.onboardingCompleted && localProgress.totalCompletedCount === 0) {
           setOnboardingOpen(true);
         } else {
@@ -380,7 +426,7 @@ function AuthenticatedStudioWorkspace({
     return () => {
       active = false;
     };
-  }, [user.id]);
+  }, [pushSafeError, tr, user.id]);
 
   // Persist local cache & debounce-sync updates to Supabase PostgreSQL
   useEffect(() => {
@@ -400,11 +446,26 @@ function AuthenticatedStudioWorkspace({
         audioConfig,
       })
         .then(() => setSyncStatus('saved'))
-        .catch(() => setSyncStatus('error'));
+        .catch((err) => {
+          setSyncStatus('error');
+          pushSafeError(
+            {
+              category: 'sync',
+              code: 'CLOUD_SYNC_RETRY',
+              title: tr('Cloud Sync Paused', '클라우드 동기화 보류'),
+              summary: tr(
+                'Latest progress changes remain cached locally and will sync on next update.',
+                '최근 변경 사항은 로컬에 안전하게 보관되었으며 다음 갱신 시 다시 동기화됩니다.'
+              ),
+              error: err,
+            },
+            false
+          );
+        });
     }, 800);
 
     return () => window.clearTimeout(timeoutId);
-  }, [audioConfig, progress, selectedLessonId, user.id]);
+  }, [audioConfig, progress, pushSafeError, selectedLessonId, tr, user.id]);
 
   useEffect(() => {
     if (!isPlaying && !isAudioRunning) return;
@@ -1079,8 +1140,26 @@ function AuthenticatedStudioWorkspace({
       setAudioTelemetry(tel);
       setIsAudioRunning(true);
     } catch (err) {
-      setAudioError(err instanceof Error ? err.message : tr('Audio connection failed', '오디오 연결 실패'));
+      const fallbackMsg = tr('Audio connection failed', '오디오 연결 실패');
+      setAudioError(err instanceof Error ? err.message : fallbackMsg);
       setIsAudioRunning(false);
+      pushSafeError(
+        {
+          category: 'audio',
+          code: 'AUDIO_INPUT_START_FAILED',
+          title: tr('Guitar Audio Connection Error', '기타 오디오 입력 연결 오류'),
+          summary: tr(
+            'Could not start audio input. Check browser microphone permissions or audio device settings.',
+            '기타 오디오 입력을 시작하지 못했습니다. 브라우저 마이크 권한 및 입력 장치 설정을 확인해 주세요.'
+          ),
+          error: err,
+          context: {
+            inputMode: audioConfig.inputMode,
+            channelMode: audioConfig.channelMode,
+          },
+        },
+        true
+      );
     }
   };
 
@@ -1102,7 +1181,26 @@ function AuthenticatedStudioWorkspace({
       setAudioTelemetry(tel);
       setIsAudioRunning(true);
     } catch (err) {
-      setAudioError(err instanceof Error ? err.message : tr('Audio restart failed', '오디오 재시작 실패'));
+      const fallbackMsg = tr('Audio restart failed', '오디오 재시작 실패');
+      setAudioError(err instanceof Error ? err.message : fallbackMsg);
+      setIsAudioRunning(false);
+      pushSafeError(
+        {
+          category: 'audio',
+          code: 'AUDIO_RESTART_FAILED',
+          title: tr('Audio Device Restart Error', '오디오 장치 재연결 오류'),
+          summary: tr(
+            'Failed to apply audio settings. Verify selected input device is connected.',
+            '변경한 오디오 설정을 적용하지 못했습니다. 선택한 입력 장치 연결 상태를 확인해 주세요.'
+          ),
+          error: err,
+          context: {
+            inputMode: audioConfig.inputMode,
+            channelMode: audioConfig.channelMode,
+          },
+        },
+        true
+      );
     }
   };
 
@@ -1257,6 +1355,8 @@ function AuthenticatedStudioWorkspace({
           }}
           syncStatus={syncStatus}
           onSignOut={() => void onSignOut()}
+          errorLogCount={errorLogs.length}
+          onOpenErrorModal={() => setErrorModalOpen(true)}
         />
 
         {/* ==================== 2. CENTER MAIN WORKSPACE ==================== */}
@@ -1280,6 +1380,7 @@ function AuthenticatedStudioWorkspace({
               onOpenTuner={() => setTunerOpen(true)}
               onOpenAudioSetup={() => setAudioSetupOpen(true)}
               audioError={audioError}
+              onOpenErrorModal={() => setErrorModalOpen(true)}
             />
           </div>
 
@@ -1801,6 +1902,18 @@ function AuthenticatedStudioWorkspace({
         onNextLesson={() => {
           if (nextLesson) handleSelectLesson(nextLesson);
         }}
+      />
+
+      <ErrorReportDialog
+        open={errorModalOpen}
+        onOpenChange={setErrorModalOpen}
+        logs={errorLogs}
+        onClearLogs={() => {
+          setErrorLogs([]);
+          setAudioError(null);
+        }}
+        onRetryAudio={() => void handleToggleAudio()}
+        onOpenAudioSetup={() => setAudioSetupOpen(true)}
       />
     </StudioMotionProvider>
   );

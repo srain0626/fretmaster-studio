@@ -6,7 +6,7 @@ import { TunerGaugeIcon } from '@/components/icons/GuitarSvgIcons';
 import type { AudioLatencyTelemetry } from '@/lib/lowLatencyAudioEngine';
 import type { AudioDeviceConfig, LivePitchData } from '@/types/guitar';
 import { useLocale } from '@/lib/i18n';
-import { Mic, MicOff, Settings2 } from 'lucide-react';
+import { AlertCircle, Mic, MicOff, Settings2 } from 'lucide-react';
 
 interface LivePitchTelemetryBarProps {
   isAudioRunning: boolean;
@@ -17,6 +17,7 @@ interface LivePitchTelemetryBarProps {
   onOpenTuner: () => void;
   onOpenAudioSetup: () => void;
   audioError?: string | null;
+  onOpenErrorModal?: () => void;
 }
 
 export function LivePitchTelemetryBar({
@@ -26,6 +27,7 @@ export function LivePitchTelemetryBar({
   onOpenTuner,
   onOpenAudioSetup,
   audioError,
+  onOpenErrorModal,
 }: LivePitchTelemetryBarProps) {
   const { tr } = useLocale();
   const centsClamped = Math.max(-50, Math.min(50, livePitch.centsOff));
@@ -45,9 +47,17 @@ export function LivePitchTelemetryBar({
       )}
 
       {audioError && (
-        <span className="text-xs text-destructive truncate max-w-[160px]" title={audioError}>
-          {audioError}
-        </span>
+        <Button
+          type="button"
+          size="sm"
+          variant="outline"
+          onClick={onOpenErrorModal}
+          className="rounded-full border-destructive/40 text-destructive hover:bg-destructive/10 text-xs gap-1.5"
+          title={audioError}
+        >
+          <AlertCircle className="w-3.5 h-3.5 shrink-0" />
+          <span>{tr('Error Log', '오류 보기')}</span>
+        </Button>
       )}
 
       <Button

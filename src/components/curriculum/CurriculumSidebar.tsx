@@ -20,11 +20,12 @@ import {
   localizeLesson,
   localizeModule,
 } from '@/data/curriculumData';
-import { useLocale, type LocalePreference } from '@/lib/i18n';
+import { useLocale } from '@/lib/i18n';
 import type { SyncStatus } from '@/lib/progressSync';
 import type { ThemePreference } from '@/lib/theme';
 import type { Lesson, PhaseId, UserProgressState } from '@/types/guitar';
 import {
+  AlertCircle,
   BarChart3,
   BookOpen,
   CheckCircle2,
@@ -42,6 +43,7 @@ import {
   Moon,
   Radio,
   RefreshCw,
+  Settings,
   Sun,
   Unlock,
 } from 'lucide-react';
@@ -66,6 +68,8 @@ interface CurriculumSidebarProps {
   user?: SidebarUserSummary | null;
   syncStatus?: SyncStatus;
   onSignOut?: () => void;
+  errorLogCount?: number;
+  onOpenErrorModal?: () => void;
 }
 
 const PHASE_FILTERS: { id: 'all' | PhaseId; enLabel: string; koLabel: string }[] = [
@@ -88,9 +92,12 @@ export function CurriculumSidebar({
   user,
   syncStatus = 'idle',
   onSignOut,
+  errorLogCount = 0,
+  onOpenErrorModal,
 }: CurriculumSidebarProps) {
   const { locale, preference: localePref, setPreference: setLocalePref, tr } = useLocale();
   const [browserOpen, setBrowserOpen] = useState(false);
+  const [settingsOpen, setSettingsOpen] = useState(false);
   const [phaseFilter, setPhaseFilter] = useState<'all' | PhaseId>('all');
   const [previewModuleId, setPreviewModuleId] = useState<string>('mod-1');
 
@@ -158,22 +165,6 @@ export function CurriculumSidebar({
     setBrowserOpen(true);
   };
 
-  const cycleTheme = () => {
-    const next: ThemePreference =
-      themePreference === 'system'
-        ? 'light'
-        : themePreference === 'light'
-        ? 'dark'
-        : 'system';
-    onThemeChange(next);
-  };
-
-  const cycleLocale = () => {
-    const next: LocalePreference =
-      localePref === 'system' ? 'en' : localePref === 'en' ? 'ko' : 'system';
-    setLocalePref(next);
-  };
-
   return (
     <>
       <aside className="flex flex-col h-full bg-sidebar border-b lg:border-b-0 lg:border-r border-sidebar-border px-3.5 py-4 select-none">
@@ -190,26 +181,13 @@ export function CurriculumSidebar({
               type="button"
               size="icon-xs"
               variant="ghost"
-              onClick={cycleLocale}
-              className="text-muted-foreground text-[10px] font-mono"
-              title={tr('Switch Language', '언어 전환')}
+              onClick={() => setSettingsOpen(true)}
+              className="relative text-muted-foreground"
+              title={tr('Settings', '설정')}
             >
-              <Languages className="w-3.5 h-3.5" />
-            </Button>
-            <Button
-              type="button"
-              size="icon-xs"
-              variant="ghost"
-              onClick={cycleTheme}
-              className="text-muted-foreground"
-              title={tr('Switch Theme', '화면 테마 전환')}
-            >
-              {themePreference === 'dark' ? (
-                <Moon className="w-3.5 h-3.5" />
-              ) : themePreference === 'light' ? (
-                <Sun className="w-3.5 h-3.5" />
-              ) : (
-                <Monitor className="w-3.5 h-3.5" />
+              <Settings className="w-3.5 h-3.5" />
+              {errorLogCount > 0 && (
+                <span className="absolute top-1 right-1 h-1.5 w-1.5 rounded-full bg-destructive" />
               )}
             </Button>
             {user && onSignOut && (
@@ -365,16 +343,16 @@ export function CurriculumSidebar({
           </ScrollArea>
         </div>
 
-        {/* Subtle Bottom Account Sync + Language & Theme Selectors (Desktop) */}
-        <div className="hidden lg:flex flex-col gap-2.5 pt-3 mt-3 border-t border-sidebar-border px-1.5">
-          {user && (
-            <div className="flex items-center justify-between gap-2 rounded-xl border border-border/80 bg-card/80 px-2.5 py-2">
+        {/* Clean Bottom Account & Settings Footer (Desktop) */}
+        <div className="hidden lg:flex flex-col pt-3 mt-3 border-t border-sidebar-border px-1">
+          {user ? (
+            <div className="flex items-center justify-between gap-2 rounded-xl border border-border/80 bg-card/85 px-2.5 py-2">
               <div className="flex items-center gap-2 min-w-0">
                 <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-accent-soft text-primary text-[11px] font-bold uppercase overflow-hidden border border-border">
                   {(user.name || user.email || 'U').slice(0, 1)}
                 </div>
                 <div className="min-w-0">
-                  <div className="text-[11.5px] font-semibold text-foreground truncate">
+                  <div className="text-[12px] font-semibold text-foreground truncate">
                     {user.name || user.email || tr('Member', '회원')}
                   </div>
                   <div className="flex items-center gap-1 text-[10px] text-muted-foreground">
@@ -384,10 +362,14 @@ export function CurriculumSidebar({
                         <span>{tr('Saving...', '저장 중...')}</span>
                       </>
                     ) : syncStatus === 'error' ? (
-                      <>
-                        <CloudOff className="w-2.5 h-2.5 text-destructive shrink-0" />
-                        <span>{tr('Sync paused', '동기화 대기')}</span>
-                      </>
+                      <button
+                        type="button"
+                        onClick={onOpenErrorModal}
+                        className="inline-flex items-center gap-1 text-destructive hover:underline"
+                      >
+                        <CloudOff className="w-2.5 h-2.5 shrink-0" />
+                        <span>{tr('Sync paused', '동기화 오류')}</span>
+                      </button>
                     ) : (
                       <>
                         <Cloud className="w-2.5 h-2.5 text-primary shrink-0" />
@@ -397,81 +379,50 @@ export function CurriculumSidebar({
                   </div>
                 </div>
               </div>
-              {onSignOut && (
+
+              <div className="flex items-center gap-0.5 shrink-0">
                 <Button
                   type="button"
                   size="icon-xs"
                   variant="ghost"
-                  onClick={onSignOut}
-                  className="text-muted-foreground hover:text-foreground shrink-0"
-                  title={tr('Sign out', '로그아웃')}
+                  onClick={() => setSettingsOpen(true)}
+                  className="relative text-muted-foreground hover:text-foreground"
+                  title={tr('Settings', '설정')}
                 >
-                  <LogOut className="w-3.5 h-3.5" />
+                  <Settings className="w-3.5 h-3.5" />
+                  {errorLogCount > 0 && (
+                    <span className="absolute top-1 right-1 h-1.5 w-1.5 rounded-full bg-destructive" />
+                  )}
                 </Button>
-              )}
+                {onSignOut && (
+                  <Button
+                    type="button"
+                    size="icon-xs"
+                    variant="ghost"
+                    onClick={onSignOut}
+                    className="text-muted-foreground hover:text-foreground"
+                    title={tr('Sign out', '로그아웃')}
+                  >
+                    <LogOut className="w-3.5 h-3.5" />
+                  </Button>
+                )}
+              </div>
             </div>
+          ) : (
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              onClick={() => setSettingsOpen(true)}
+              className="w-full justify-between text-xs text-muted-foreground hover:text-foreground"
+            >
+              <span className="inline-flex items-center gap-2">
+                <Settings className="w-3.5 h-3.5" />
+                {tr('Settings', '설정')}
+              </span>
+              <span className="text-[10px] font-mono uppercase">{locale}</span>
+            </Button>
           )}
-
-          <div className="flex items-center justify-between">
-            <span className="text-[11px] text-muted-foreground">{tr('Language', '언어')}</span>
-            <div className="inline-flex items-center rounded-lg border border-border bg-card p-0.5">
-              {(
-                [
-                  { id: 'system', label: tr('Auto', '자동') },
-                  { id: 'en', label: 'EN' },
-                  { id: 'ko', label: '한국어' },
-                ] as const
-              ).map((opt) => {
-                const active = localePref === opt.id;
-                return (
-                  <button
-                    key={opt.id}
-                    type="button"
-                    onClick={() => setLocalePref(opt.id)}
-                    className={`rounded-md px-2 py-0.5 text-[10.5px] font-medium transition-colors ${
-                      active
-                        ? 'bg-secondary text-foreground'
-                        : 'text-muted-foreground hover:text-foreground'
-                    }`}
-                  >
-                    {opt.label}
-                  </button>
-                );
-              })}
-            </div>
-          </div>
-
-          <div className="flex items-center justify-between">
-            <span className="text-[11px] text-muted-foreground">{tr('Theme', '화면 테마')}</span>
-            <div className="inline-flex items-center rounded-lg border border-border bg-card p-0.5">
-              {(
-                [
-                  { id: 'system', icon: Monitor, label: tr('Auto', '자동') },
-                  { id: 'light', icon: Sun, label: tr('Light', '라이트') },
-                  { id: 'dark', icon: Moon, label: tr('Dark', '다크') },
-                ] as const
-              ).map((opt) => {
-                const Icon = opt.icon;
-                const active = themePreference === opt.id;
-                return (
-                  <button
-                    key={opt.id}
-                    type="button"
-                    onClick={() => onThemeChange(opt.id)}
-                    className={`inline-flex items-center gap-1 rounded-md px-2 py-1 text-[10.5px] font-medium transition-colors ${
-                      active
-                        ? 'bg-secondary text-foreground'
-                        : 'text-muted-foreground hover:text-foreground'
-                    }`}
-                    title={opt.label}
-                  >
-                    <Icon className="w-3 h-3" />
-                    <span>{opt.label}</span>
-                  </button>
-                );
-              })}
-            </div>
-          </div>
         </div>
       </aside>
 
@@ -610,6 +561,138 @@ export function CurriculumSidebar({
                 })}
               </div>
             </div>
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* Studio Preferences & Diagnostics Modal */}
+      <Dialog open={settingsOpen} onOpenChange={setSettingsOpen}>
+        <DialogContent className="sm:max-w-sm">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2 text-base font-semibold">
+              <Settings className="w-4 h-4 text-primary" />
+              <span>{tr('Studio Settings', '스튜디오 환경 설정')}</span>
+            </DialogTitle>
+          </DialogHeader>
+
+          <div className="space-y-4 pt-1">
+            <div className="flex items-center justify-between gap-3">
+              <div className="flex items-center gap-2 text-xs font-medium text-foreground whitespace-nowrap">
+                <Languages className="w-3.5 h-3.5 text-muted-foreground" />
+                <span>{tr('Language', '언어')}</span>
+              </div>
+              <div className="inline-flex items-center rounded-lg border border-border bg-card p-0.5">
+                {(
+                  [
+                    { id: 'system', label: tr('Auto', '자동') },
+                    { id: 'en', label: 'EN' },
+                    { id: 'ko', label: '한국어' },
+                  ] as const
+                ).map((opt) => {
+                  const active = localePref === opt.id;
+                  return (
+                    <button
+                      key={opt.id}
+                      type="button"
+                      onClick={() => setLocalePref(opt.id)}
+                      className={`rounded-md px-2.5 py-1 text-xs font-medium whitespace-nowrap transition-colors ${
+                        active
+                          ? 'bg-secondary text-foreground'
+                          : 'text-muted-foreground hover:text-foreground'
+                      }`}
+                    >
+                      {opt.label}
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+
+            <div className="flex items-center justify-between gap-3">
+              <div className="flex items-center gap-2 text-xs font-medium text-foreground whitespace-nowrap">
+                <Monitor className="w-3.5 h-3.5 text-muted-foreground" />
+                <span>{tr('Appearance', '화면 테마')}</span>
+              </div>
+              <div className="inline-flex items-center rounded-lg border border-border bg-card p-0.5">
+                {(
+                  [
+                    { id: 'system', icon: Monitor, label: tr('Auto', '자동') },
+                    { id: 'light', icon: Sun, label: tr('Light', '라이트') },
+                    { id: 'dark', icon: Moon, label: tr('Dark', '다크') },
+                  ] as const
+                ).map((opt) => {
+                  const Icon = opt.icon;
+                  const active = themePreference === opt.id;
+                  return (
+                    <button
+                      key={opt.id}
+                      type="button"
+                      onClick={() => onThemeChange(opt.id)}
+                      className={`inline-flex items-center gap-1 rounded-md px-2.5 py-1 text-xs font-medium whitespace-nowrap transition-colors ${
+                        active
+                          ? 'bg-secondary text-foreground'
+                          : 'text-muted-foreground hover:text-foreground'
+                      }`}
+                    >
+                      <Icon className="w-3 h-3" />
+                      <span>{opt.label}</span>
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+
+            {onOpenErrorModal && (
+              <div className="pt-3 border-t border-border flex items-center justify-between gap-3">
+                <div className="flex items-center gap-2 text-xs font-medium text-foreground">
+                  <AlertCircle className="w-3.5 h-3.5 text-muted-foreground" />
+                  <span>{tr('Diagnostic Logs', '오류 진단 로그')}</span>
+                </div>
+                <Button
+                  type="button"
+                  size="sm"
+                  variant="outline"
+                  onClick={() => {
+                    setSettingsOpen(false);
+                    onOpenErrorModal();
+                  }}
+                  className="text-xs gap-1.5"
+                >
+                  <span>{tr('View Logs', '로그 열기')}</span>
+                  {errorLogCount > 0 && (
+                    <span className="rounded-full bg-destructive/15 text-destructive px-1.5 py-0.5 text-[10px] font-mono font-semibold">
+                      {errorLogCount}
+                    </span>
+                  )}
+                </Button>
+              </div>
+            )}
+
+            {user && onSignOut && (
+              <div className="pt-3 border-t border-border flex items-center justify-between gap-3">
+                <div className="min-w-0">
+                  <div className="text-xs font-semibold text-foreground truncate">
+                    {user.name || tr('Signed in', '로그인됨')}
+                  </div>
+                  {user.email && (
+                    <div className="text-[11px] text-muted-foreground truncate">{user.email}</div>
+                  )}
+                </div>
+                <Button
+                  type="button"
+                  size="sm"
+                  variant="outline"
+                  onClick={() => {
+                    setSettingsOpen(false);
+                    onSignOut();
+                  }}
+                  className="text-xs gap-1.5 shrink-0"
+                >
+                  <LogOut className="w-3.5 h-3.5" />
+                  <span>{tr('Sign out', '로그아웃')}</span>
+                </Button>
+              </div>
+            )}
           </div>
         </DialogContent>
       </Dialog>
