@@ -48,13 +48,28 @@ export function AudioInterfaceModal({
   const [devices, setDevices] = useState<MediaDeviceInfo[]>([]);
   const [calibrating, setCalibrating] = useState(false);
   const [tapErrors, setTapErrors] = useState<number[]>([]);
+  const [bridgeTestState, setBridgeTestState] = useState<{
+    status: 'idle' | 'testing' | 'ok' | 'offline';
+    latencyMs?: number;
+  }>({ status: 'idle' });
   const expectedClickTimesRef = useRef<number[]>([]);
   const calTimerRef = useRef<number | null>(null);
 
   useEffect(() => {
-    if (!open) return;
+    if (!open) {
+      setBridgeTestState({ status: 'idle' });
+      return;
+    }
     void guitarAudioEngine.listInputDevices().then(setDevices);
   }, [open]);
+
+  const handleTestAsioBridge = async () => {
+    setBridgeTestState({ status: 'testing' });
+    const res = await guitarAudioEngine.testAsioBridge(config.asioBridgeUrl);
+    setBridgeTestState(
+      res.ok ? { status: 'ok', latencyMs: res.latencyMs } : { status: 'offline' }
+    );
+  };
 
   useEffect(() => {
     if (!calibrating || !livePitch.isOnset) return;
@@ -154,7 +169,9 @@ export function AudioInterfaceModal({
               onClick={() => onUpdateConfig({ inputMode: 'worklet' })}
             >
               <div>
-                <div className="text-xs font-semibold">{tr('Low-Latency Web Audio', '저지연 Web Audio')}</div>
+                <div className="text-xs font-semibold">
+                  {tr('Low-Latency Web Audio (Recommended)', '저지연 Web Audio (권장)')}
+                </div>
                 <div className="text-[10px] opacity-80">128-sample Worklet</div>
               </div>
             </Button>
@@ -170,6 +187,60 @@ export function AudioInterfaceModal({
               </div>
             </Button>
           </div>
+
+          {telemetry.fallbackNotice && (
+            <div className="rounded-lg border border-border bg-secondary/50 px-3 py-2 text-xs text-foreground">
+              {telemetry.fallbackNotice}
+            </div>
+          )}
+
+          {config.inputMode === 'asio-bridge' && (
+            <div className="rounded-lg border border-border bg-secondary/35 p-3 space-y-2.5">
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                <div className="text-xs font-semibold text-foreground">
+                  {tr('Local ASIO Bridge Daemon Status', '로컬 ASIO 브리지 데몬 상태')}
+                </div>
+                <Badge variant="outline" className="text-[10px] font-mono">
+                  {bridgeTestState.status === 'ok'
+                    ? tr(`Online (${bridgeTestState.latencyMs}ms)`, `연결됨 (${bridgeTestState.latencyMs}ms)`)
+                    : bridgeTestState.status === 'offline'
+                    ? tr('Offline · Auto-fallback active', '미실행 · 자동 Web Audio 전환')
+                    : bridgeTestState.status === 'testing'
+                    ? tr('Testing...', '확인 중...')
+                    : config.asioBridgeUrl}
+                </Badge>
+              </div>
+              <p className="text-[11px] text-muted-foreground leading-relaxed">
+                {tr(
+                  'Requires a separate local ASIO daemon listening on ws://127.0.0.1:9420 (GitHub Issue #1). If unreachable, FretMaster automatically falls back to the 128-sample Web Audio Worklet so guitar input stays uninterrupted.',
+                  'Native ASIO 모드는 PC에 별도 로컬 브리지 데몬(ws://127.0.0.1:9420, Issue #1)이 실행 중이어야 합니다. 연결되지 않아도 저지연 Web Audio(Worklet 128)로 자동 전환되어 끊김 없이 연습할 수 있습니다.'
+                )}
+              </p>
+              <div className="flex flex-wrap items-center gap-2">
+                <Button
+                  type="button"
+                  size="sm"
+                  variant="outline"
+                  disabled={bridgeTestState.status === 'testing'}
+                  onClick={handleTestAsioBridge}
+                  className="text-xs"
+                >
+                  {bridgeTestState.status === 'testing'
+                    ? tr('Testing...', '테스트 중...')
+                    : tr('Test Bridge', '연결 테스트')}
+                </Button>
+                <Button
+                  type="button"
+                  size="sm"
+                  variant="secondary"
+                  onClick={() => onUpdateConfig({ inputMode: 'worklet' })}
+                  className="text-xs"
+                >
+                  {tr('Use Web Audio (Recommended)', '저지연 Web Audio 사용 (권장)')}
+                </Button>
+              </div>
+            </div>
+          )}
 
           {config.inputMode === 'worklet' && (
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">

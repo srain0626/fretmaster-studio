@@ -119,6 +119,7 @@ export interface AudioLatencyTelemetry {
   totalEstimatedMs: number;
   pipelineMode: 'worklet' | 'analyser-fallback' | 'asio-bridge' | 'idle';
   asioBridgeConnected: boolean;
+  fallbackNotice?: string;
 }
 
 export type PitchListener = (data: LivePitchData) => void;
@@ -227,9 +228,25 @@ export class LowLatencyGuitarAudioEngine {
     await this.stop();
 
     if (this.config.inputMode === 'asio-bridge') {
-      return this.startAsioBridge();
+      try {
+        return await this.startAsioBridge();
+      } catch {
+        const fallbackNotice = isEnglishRuntimeLocale()
+          ? 'Local ASIO daemon was not detected; switched automatically to 128-sample Web Audio Worklet.'
+          : '로컬 ASIO 브리지(9420)를 찾지 못해 저지연 Web Audio(Worklet 128)로 자동 전환했습니다.';
+        const tel = await this.startWorkletPipeline();
+        this.telemetry = {
+          ...tel,
+          fallbackNotice,
+        };
+        return this.getTelemetry();
+      }
     }
 
+    return this.startWorkletPipeline();
+  }
+
+  private async startWorkletPipeline(): Promise<AudioLatencyTelemetry> {
     if (typeof window === 'undefined' || !navigator.mediaDevices?.getUserMedia) {
       throw new Error(
         isEnglishRuntimeLocale()
@@ -332,26 +349,115 @@ export class LowLatencyGuitarAudioEngine {
     return this.getTelemetry();
   }
 
+  public async testAsioBridge(
+    targetUrl?: string
+  ): Promise<{ ok: boolean; latencyMs?: number; error?: string }> {
+    const url = targetUrl || this.config.asioBridgeUrl;
+    if (typeof window === 'undefined' || typeof WebSocket === 'undefined') {
+      return {
+        ok: false,
+        error: isEnglishRuntimeLocale()
+          ? 'WebSocket is unavailable in this environment.'
+          : '현재 브라우저 환경에서 WebSocket을 사용할 수 없습니다.',
+      };
+    }
+
+    return new Promise((resolve) => {
+      let settled = false;
+      const startedAt = performance.now();
+      let ws: WebSocket | null = null;
+
+      const finish = (res: { ok: boolean; latencyMs?: number; error?: string }) => {
+        if (settled) return;
+        settled = true;
+        clearTimeout(timeout);
+        try {
+          if (ws && (ws.readyState === WebSocket.OPEN || ws.readyState === WebSocket.CONNECTING)) {
+            ws.close();
+          }
+        } catch {
+          // ignore close errors
+        }
+        resolve(res);
+      };
+
+      const timeout = setTimeout(() => {
+        finish({
+          ok: false,
+          error: isEnglishRuntimeLocale()
+            ? `No ASIO bridge daemon detected on ${url}.`
+            : `로컬 ASIO 브리지(${url})가 실행 중이지 않습니다.`,
+        });
+      }, 1500);
+
+      try {
+        ws = new WebSocket(url);
+        ws.onopen = () => {
+          finish({ ok: true, latencyMs: Math.max(1, Math.round(performance.now() - startedAt)) });
+        };
+        ws.onerror = () => {
+          finish({
+            ok: false,
+            error: isEnglishRuntimeLocale()
+              ? `Could not connect to ${url}.`
+              : `${url} 연결에 실패했습니다.`,
+          });
+        };
+        ws.onclose = () => {
+          finish({
+            ok: false,
+            error: isEnglishRuntimeLocale()
+              ? `Bridge socket closed on ${url}.`
+              : `ASIO 브리지 소켓(${url})이 닫혔습니다.`,
+          });
+        };
+      } catch (err) {
+        finish({
+          ok: false,
+          error: err instanceof Error ? err.message : 'WebSocket error',
+        });
+      }
+    });
+  }
+
   private startAsioBridge(): Promise<AudioLatencyTelemetry> {
     return new Promise((resolve, reject) => {
+      let settled = false;
+      let ws: WebSocket | null = null;
+
+      const fail = (err: Error) => {
+        if (settled) return;
+        settled = true;
+        clearTimeout(timeout);
+        this.telemetry.asioBridgeConnected = false;
+        this.asioSocket = null;
+        try {
+          if (ws && (ws.readyState === WebSocket.OPEN || ws.readyState === WebSocket.CONNECTING)) {
+            ws.close();
+          }
+        } catch {
+          // ignore close failures
+        }
+        reject(err);
+      };
+
+      const timeout = setTimeout(() => {
+        fail(
+          new Error(
+            isEnglishRuntimeLocale()
+              ? `Unable to connect to local ASIO bridge (${this.config.asioBridgeUrl}). Switch to Browser Worklet mode.`
+              : `로컬 ASIO 브리지(${this.config.asioBridgeUrl})에 연결할 수 없습니다. 브라우저 Worklet 모드로 전환해 사용하세요.`
+          )
+        );
+      }, 1500);
+
       try {
-        const ws = new WebSocket(this.config.asioBridgeUrl);
+        ws = new WebSocket(this.config.asioBridgeUrl);
         this.asioSocket = ws;
 
-        const timeout = setTimeout(() => {
-          if (!this.telemetry.asioBridgeConnected) {
-            ws.close();
-            reject(
-              new Error(
-                isEnglishRuntimeLocale()
-                  ? `Unable to connect to local ASIO bridge (${this.config.asioBridgeUrl}). Switch to Browser Worklet mode.`
-                  : `로컬 ASIO 브리지(${this.config.asioBridgeUrl})에 연결할 수 없습니다. 브라우저 Worklet 모드로 전환해 사용하세요.`
-              )
-            );
-          }
-        }, 2500);
-
         ws.onopen = () => {
+          if (settled) return;
+          settled = true;
           clearTimeout(timeout);
           this.isRunning = true;
           this.telemetry = {
@@ -362,7 +468,7 @@ export class LowLatencyGuitarAudioEngine {
             pipelineMode: 'asio-bridge',
             asioBridgeConnected: true,
           };
-          ws.send(
+          ws?.send(
             JSON.stringify({
               type: 'config',
               channelMode: this.config.channelMode,
@@ -390,9 +496,7 @@ export class LowLatencyGuitarAudioEngine {
         };
 
         ws.onerror = () => {
-          clearTimeout(timeout);
-          this.telemetry.asioBridgeConnected = false;
-          reject(
+          fail(
             new Error(
               isEnglishRuntimeLocale()
                 ? 'ASIO bridge WebSocket connection error occurred.'
@@ -400,8 +504,23 @@ export class LowLatencyGuitarAudioEngine {
             )
           );
         };
+
+        ws.onclose = () => {
+          if (!settled) {
+            fail(
+              new Error(
+                isEnglishRuntimeLocale()
+                  ? 'ASIO bridge WebSocket closed before handshake.'
+                  : 'ASIO 브리지 소켓이 연결 전 종료되었습니다.'
+              )
+            );
+          } else {
+            this.telemetry.asioBridgeConnected = false;
+            this.asioSocket = null;
+          }
+        };
       } catch (e) {
-        reject(e);
+        fail(e instanceof Error ? e : new Error('ASIO bridge WebSocket connection error occurred.'));
       }
     });
   }
