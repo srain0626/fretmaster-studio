@@ -2,7 +2,10 @@
 
 # FretMaster Studio
 
-<p><strong>English</strong> · <a href="README.ko.md">한국어 (Korean)</a></p>
+<p>
+  <a href="README.md"><img src="https://img.shields.io/badge/Language-English-e85d3f?style=flat-square" alt="English (Current)" /></a>
+  <a href="README.ko.md"><img src="https://img.shields.io/badge/한국어-README.ko.md-111215?style=flat-square" alt="Switch to Korean README" /></a>
+</p>
 
 **From day-one fundamentals to tactile fretboard harmony, ultra-low-latency DSP feedback, blind ear transcription, and fearless improvisation.**  
 An open electric guitar learning studio engineered to tear down every barrier between beginners and musical freedom.
@@ -12,6 +15,7 @@ An open electric guitar learning studio engineered to tear down every barrier be
 </p>
 
 <p>
+  <a href="https://fretmaster-studio.vercel.app/"><img src="https://img.shields.io/badge/Live_Demo-fretmaster--studio.vercel.app-e85d3f?style=for-the-badge&logo=vercel&logoColor=white" alt="Live Demo on Vercel" /></a>
   <a href="https://nextjs.org/"><img src="https://img.shields.io/badge/Next.js-16.4-111215?style=for-the-badge&logo=nextdotjs&logoColor=white" alt="Next.js" /></a>
   <a href="https://react.dev/"><img src="https://img.shields.io/badge/React-19.3-111215?style=for-the-badge&logo=react&logoColor=61DAFB" alt="React" /></a>
   <a href="https://www.typescriptlang.org/"><img src="https://img.shields.io/badge/TypeScript-5-111215?style=for-the-badge&logo=typescript&logoColor=3178C6" alt="TypeScript" /></a>
@@ -23,6 +27,7 @@ An open electric guitar learning studio engineered to tear down every barrier be
 </p>
 
 <p>
+  <a href="https://fretmaster-studio.vercel.app/"><strong>Try Live Studio</strong></a> ·
   <a href="#studio-preview">Preview</a> ·
   <a href="#why-fretmaster-studio-exists">Origin &amp; Philosophy</a> ·
   <a href="#applied-music-pedagogy--spiral-harmony">Pedagogy</a> ·
@@ -49,7 +54,7 @@ An open electric guitar learning studio engineered to tear down every barrier be
 
 | Light Studio · 3-Column Learning Workspace (`4-2` Relative Keys) | Dark Studio · Remotion Harmony &amp; Posture Motion Guide (`6-3` Bends) |
 | :---: | :---: |
-| <img src="docs/assets/studio-light-mode.png" alt="FretMaster Light Studio 3-Column UI" width="440" /> | <img src="docs/assets/guide-dark-mode.png" alt="FretMaster Dark Mode Remotion Guide Modal" width="440" /> |
+| <img src="docs/assets/studio-light-en.png" alt="FretMaster Light Studio 3-Column English UI" width="440" /> | <img src="docs/assets/guide-dark-en.png" alt="FretMaster Dark Mode Remotion Guide Modal English UI" width="440" /> |
 | *System-matched Light theme · 4-finger earth palette · Synced chord &amp; TAB score* | *Dark theme · Animated bending pitch arc · Real-time Web Audio synth playback* |
 
 ---

@@ -2,7 +2,10 @@
 
 # FretMaster Studio
 
-<p><a href="README.md">English</a> · <strong>한국어</strong></p>
+<p>
+  <a href="README.md"><img src="https://img.shields.io/badge/English-README.md-111215?style=flat-square" alt="영문 README로 전환" /></a>
+  <a href="README.ko.md"><img src="https://img.shields.io/badge/언어-한국어-e85d3f?style=flat-square" alt="한국어 (현재)" /></a>
+</p>
 
 **초심자 기본기부터 손끝으로 깨우치는 지판 화성학, 저지연 DSP 실시간 판정, 귀카피·즉흥 연주까지.**  
 일렉트릭 기타 학습의 모든 장벽을 낮추기 위해 설계된 오픈 스튜디오 플랫폼
@@ -12,16 +15,19 @@
 </p>
 
 <p>
+  <a href="https://fretmaster-studio.vercel.app/"><img src="https://img.shields.io/badge/Live_Demo-fretmaster--studio.vercel.app-e85d3f?style=for-the-badge&logo=vercel&logoColor=white" alt="Vercel 라이브 데모" /></a>
   <a href="https://nextjs.org/"><img src="https://img.shields.io/badge/Next.js-16.4-111215?style=for-the-badge&logo=nextdotjs&logoColor=white" alt="Next.js" /></a>
   <a href="https://react.dev/"><img src="https://img.shields.io/badge/React-19.3-111215?style=for-the-badge&logo=react&logoColor=61DAFB" alt="React" /></a>
   <a href="https://www.typescriptlang.org/"><img src="https://img.shields.io/badge/TypeScript-5-111215?style=for-the-badge&logo=typescript&logoColor=3178C6" alt="TypeScript" /></a>
   <a href="https://www.remotion.dev/"><img src="https://img.shields.io/badge/Remotion-4.0_Motion-e85d3f?style=for-the-badge" alt="Remotion" /></a>
   <img src="https://img.shields.io/badge/AudioWorklet-YIN_DSP-e85d3f?style=for-the-badge" alt="AudioWorklet DSP" />
   <img src="https://img.shields.io/badge/Curriculum-39_Lessons-3f7d5e?style=for-the-badge" alt="39 Lessons" />
+  <img src="https://img.shields.io/badge/i18n-EN_%2F_KO_Auto-3f7d5e?style=for-the-badge" alt="영문·한국어 자동 언어 지원" />
   <a href="LICENSE"><img src="https://img.shields.io/badge/License-GPLv3-111215?style=for-the-badge" alt="GPL-3.0 License" /></a>
 </p>
 
 <p>
+  <a href="https://fretmaster-studio.vercel.app/"><strong>라이브 스튜디오 바로가기</strong></a> ·
   <a href="#스튜디오-프리뷰">프리뷰</a> ·
   <a href="#프로젝트-기획-배경과-목적">기획 배경</a> ·
   <a href="#적용된-음악-교육학--나선형-화성-설계">교육학 설계</a> ·
@@ -300,7 +306,7 @@ fretmaster-studio/
 
 | 수정하려는 영역 | 필독 문서 (영문 최적화) | 분량 | 핵심 수록 내용 |
 | :--- | :--- | :---: | :--- |
-| 아키텍처 · 상태 · 스토리지 | [`docs/01-ARCHITECTURE.md`](docs/01-ARCHITECTURE.md) | `66L` | 테마 부트 스크립트, `localStorage` 키 3종, 3단 레이아웃, 6가지 연습 모드 |
+| 아키텍처 · 상태 · 스토리지 | [`docs/01-ARCHITECTURE.md`](docs/01-ARCHITECTURE.md) | `67L` | 테마 부트 스크립트, `localStorage` 키 4종(언어·테마 포함), 3단 레이아웃, 6가지 연습 모드 |
 | UI 토큰 · 컴포넌트 규격 | [`docs/02-UI-SYSTEM.md`](docs/02-UI-SYSTEM.md) | `56L` | Light/Dark CSS 변수표, 4손가락 팔레트, HeroUI v3 vs Base UI/shadcn 주의사항 |
 | 레슨 · 모듈 · 커리큘럼 | [`docs/03-CURRICULUM.md`](docs/03-CURRICULUM.md) | `52L` | 39개 레슨 ID 인덱스, `buildNotes` 팩토리, 순차 해금 및 승급 점수 공식 |
 | 오디오 DSP · 신스 · 판정 | [`docs/04-AUDIO-DSP.md`](docs/04-AUDIO-DSP.md) | `52L` | `AudioWorklet` YIN 피치/온셋 DSP, ASIO 브리지(`:9420`), `JUDGMENT_TIERS` |
