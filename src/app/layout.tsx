@@ -28,13 +28,14 @@ function gtag(){dataLayer.push(arguments);}
 gtag('js', new Date());
 window.dataLayer.push({'gtm.start': new Date().getTime(), event: 'gtm.js'});
 `;
+const SITE_TITLE = "FretMaster Studio — Electric Guitar Learning";
 const SITE_DESCRIPTION =
-  "Interactive electric guitar learning platform combining 39 guided lessons, 5-layer fretboard harmony, low-latency AudioWorklet YIN pitch detection, Remotion motion guides, blind ear transcription, and live improvisation feedback in English and Korean.";
+  "Learn electric guitar with 39 interactive lessons, real-time pitch & chord feedback, fretboard harmony guides, and cloud progress sync.";
 
 export const metadata: Metadata = {
   metadataBase: new URL(SITE_URL),
   title: {
-    default: "FretMaster Studio — Interactive Electric Guitar Learning & Harmony Studio",
+    default: SITE_TITLE,
     template: "%s | FretMaster Studio",
   },
   description: SITE_DESCRIPTION,
@@ -74,7 +75,7 @@ export const metadata: Metadata = {
     type: "website",
     url: SITE_URL,
     siteName: "FretMaster Studio",
-    title: "FretMaster Studio — Interactive Electric Guitar Learning & Harmony Studio",
+    title: SITE_TITLE,
     description: SITE_DESCRIPTION,
     locale: "en_US",
     alternateLocale: ["ko_KR"],
@@ -83,13 +84,13 @@ export const metadata: Metadata = {
         url: "/og-thumbnail.jpg",
         width: 1376,
         height: 768,
-        alt: "FretMaster Studio — Interactive Electric Guitar Learning Studio",
+        alt: SITE_TITLE,
       },
     ],
   },
   twitter: {
     card: "summary_large_image",
-    title: "FretMaster Studio — Interactive Electric Guitar Learning & Harmony Studio",
+    title: SITE_TITLE,
     description: SITE_DESCRIPTION,
     images: ["/og-thumbnail.jpg"],
   },
@@ -97,28 +98,38 @@ export const metadata: Metadata = {
 
 const JSON_LD = {
   "@context": "https://schema.org",
-  "@type": "WebApplication",
-  name: "FretMaster Studio",
-  url: SITE_URL,
-  description: SITE_DESCRIPTION,
-  applicationCategory: "EducationalApplication",
-  operatingSystem: "Web",
-  inLanguage: ["en", "ko"],
-  isAccessibleForFree: true,
-  offers: {
-    "@type": "Offer",
-    price: "0",
-    priceCurrency: "USD",
-  },
-  image: `${SITE_URL}/og-thumbnail.jpg`,
-  screenshot: `${SITE_URL}/og-thumbnail.jpg`,
-  softwareVersion: "0.3.0",
-  license: "https://www.gnu.org/licenses/gpl-3.0.html",
-  author: {
-    "@type": "Person",
-    name: "Ray Kim",
-    url: "https://github.com/srain0626",
-  },
+  "@graph": [
+    {
+      "@type": "WebSite",
+      name: "FretMaster Studio",
+      alternateName: "FretMaster",
+      url: `${SITE_URL}/`,
+    },
+    {
+      "@type": "WebApplication",
+      name: "FretMaster Studio",
+      url: SITE_URL,
+      description: SITE_DESCRIPTION,
+      applicationCategory: "EducationalApplication",
+      operatingSystem: "Web",
+      inLanguage: ["en", "ko"],
+      isAccessibleForFree: true,
+      offers: {
+        "@type": "Offer",
+        price: "0",
+        priceCurrency: "USD",
+      },
+      image: `${SITE_URL}/og-thumbnail.jpg`,
+      screenshot: `${SITE_URL}/og-thumbnail.jpg`,
+      softwareVersion: "0.3.0",
+      license: "https://www.gnu.org/licenses/gpl-3.0.html",
+      author: {
+        "@type": "Person",
+        name: "Ray Kim",
+        url: "https://github.com/srain0626",
+      },
+    },
+  ],
 };
 
 const THEME_INIT_SCRIPT = `

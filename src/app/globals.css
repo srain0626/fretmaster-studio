@@ -218,3 +218,26 @@
 .animate-string-vibrate {
   animation: string-vibrate 0.22s ease-out infinite;
 }
+
+@media (prefers-reduced-motion: no-preference) {
+  html {
+    scroll-behavior: smooth;
+  }
+}
+
+.landing-slide-grid {
+  background-image: radial-gradient(
+    color-mix(in srgb, var(--foreground) 7%, transparent) 1px,
+    transparent 1px
+  );
+  background-size: 24px 24px;
+}
+
+.landing-slide-divider {
+  height: 1px;
+  background: linear-gradient(
+    to right,
+    var(--border),
+    color-mix(in srgb, var(--border) 35%, transparent)
+  );
+}
