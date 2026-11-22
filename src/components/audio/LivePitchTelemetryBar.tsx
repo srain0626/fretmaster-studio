@@ -90,7 +90,7 @@ export function LivePitchTelemetryBar({
         </button>
       )}
 
-      {livePitch.isActive && (
+      {livePitch.isActive && livePitch.frequency > 0 && livePitch.nearestMidi > 0 && (
         <div className="hidden sm:flex items-center gap-1.5 rounded-full border border-border bg-card px-2.5 py-1 font-mono text-xs tabular-nums">
           <span className={inTune ? 'text-emerald-700 dark:text-emerald-400 font-semibold' : 'text-foreground font-semibold'}>
             {livePitch.noteName}

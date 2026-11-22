@@ -13,6 +13,36 @@ class GuitarPitchProcessor extends AudioWorkletProcessor {
     this.writeIndex = 0;
     this.samplesSinceAnalysis = 0;
 
+    // Preallocated 8192-point zero-padded Hann Radix-2 FFT workspace for polyphonic chord analysis
+    this.fftSize = 8192;
+    this.fftRe = new Float32Array(this.fftSize);
+    this.fftIm = new Float32Array(this.fftSize);
+    this.hannWindow = new Float32Array(this.bufferSize);
+    for (let i = 0; i < this.bufferSize; i++) {
+      this.hannWindow[i] = 0.5 * (1 - Math.cos((2 * Math.PI * i) / (this.bufferSize - 1)));
+    }
+    this.bitRev = new Uint16Array(this.fftSize);
+    const logN = Math.round(Math.log2(this.fftSize));
+    for (let i = 0; i < this.fftSize; i++) {
+      let x = i;
+      let rev = 0;
+      for (let b = 0; b < logN; b++) {
+        rev = (rev << 1) | (x & 1);
+        x >>= 1;
+      }
+      this.bitRev[i] = rev;
+    }
+    this.cosTable = new Float32Array(this.fftSize / 2);
+    this.sinTable = new Float32Array(this.fftSize / 2);
+    for (let i = 0; i < this.fftSize / 2; i++) {
+      const ang = (-2 * Math.PI * i) / this.fftSize;
+      this.cosTable[i] = Math.cos(ang);
+      this.sinTable[i] = Math.sin(ang);
+    }
+    this.polyHopCounter = 0;
+    this.lastChroma = new Array(12).fill(0);
+    this.lastNoteSpectrum = new Array(45).fill(0);
+
     // Dynamics & onset state
     this.noiseGateDb = -58;
     this.inputGainLinear = 1.0;
@@ -142,6 +172,10 @@ class GuitarPitchProcessor extends AudioWorkletProcessor {
 
     // DC offset removal + 1-pole LPF (~1400 Hz) to suppress pick scratch & aliasing
     const sr = sampleRate;
+    const polyTick = this.polyHopCounter++;
+    if (isOnset || polyTick % 2 === 0) {
+      this.computePolyphonicSpectrum(frame, mean, sr);
+    }
     const yinFrame = this.yinFrame;
     const lpfAlpha = (2 * Math.PI * 1400) / (sr + 2 * Math.PI * 1400);
     let lpfState = 0;
@@ -230,6 +264,8 @@ class GuitarPitchProcessor extends AudioWorkletProcessor {
         isOnset,
         clarity: 0,
         sampleTime: nowSec,
+        chroma: this.lastChroma,
+        noteSpectrum: this.lastNoteSpectrum,
       });
       return;
     }
@@ -255,7 +291,83 @@ class GuitarPitchProcessor extends AudioWorkletProcessor {
       isOnset,
       clarity,
       sampleTime: nowSec,
+      chroma: this.lastChroma,
+      noteSpectrum: this.lastNoteSpectrum,
     });
+  }
+
+  computePolyphonicSpectrum(frame, mean, sr) {
+    const N = this.fftSize;
+    const re = this.fftRe;
+    const im = this.fftIm;
+    const win = this.hannWindow;
+    const bitRev = this.bitRev;
+    const cosT = this.cosTable;
+    const sinT = this.sinTable;
+
+    re.fill(0);
+    im.fill(0);
+    for (let i = 0; i < this.bufferSize; i++) {
+      re[bitRev[i]] = (frame[i] - mean) * win[i];
+    }
+
+    // Iterative Cooley-Tukey Radix-2 FFT
+    for (let size = 2; size <= N; size <<= 1) {
+      const half = size >> 1;
+      const tableStep = N / size;
+      for (let i = 0; i < N; i += size) {
+        for (let j = 0, k = 0; j < half; j++, k += tableStep) {
+          const evenIdx = i + j;
+          const oddIdx = evenIdx + half;
+          const tRe = re[oddIdx] * cosT[k] - im[oddIdx] * sinT[k];
+          const tIm = re[oddIdx] * sinT[k] + im[oddIdx] * cosT[k];
+          re[oddIdx] = re[evenIdx] - tRe;
+          im[oddIdx] = im[evenIdx] - tIm;
+          re[evenIdx] += tRe;
+          im[evenIdx] += tIm;
+        }
+      }
+    }
+
+    const binHz = sr / N;
+    const halfBins = N >> 1;
+    const rawEnergies = new Float32Array(45);
+    const rawChroma = new Float32Array(12);
+    let maxEnergy = 1e-6;
+
+    const bracketMag = (targetFreq) => {
+      const exactBin = targetFreq / binHz;
+      const b0 = Math.max(1, Math.min(halfBins - 2, Math.floor(exactBin)));
+      const b1 = b0 + 1;
+      const m0 = Math.hypot(re[b0], im[b0]);
+      const m1 = Math.hypot(re[b1], im[b1]);
+      return m0 > m1 ? m0 : m1;
+    };
+
+    for (let idx = 0; idx < 45; idx++) {
+      const midi = 40 + idx;
+      const f1 = 440 * Math.pow(2, (midi - 69) / 12);
+      const mag1 = bracketMag(f1);
+      const mag2 = f1 * 2 < sr * 0.45 ? bracketMag(f1 * 2) : 0;
+      const energy = Math.sqrt(mag1 * (0.55 * mag1 + 0.45 * mag2));
+      rawEnergies[idx] = energy;
+      if (energy > maxEnergy) maxEnergy = energy;
+      rawChroma[midi % 12] += energy;
+    }
+
+    let maxChroma = 1e-6;
+    for (let c = 0; c < 12; c++) {
+      if (rawChroma[c] > maxChroma) maxChroma = rawChroma[c];
+    }
+
+    const specOut = this.lastNoteSpectrum;
+    const chromaOut = this.lastChroma;
+    for (let idx = 0; idx < 45; idx++) {
+      specOut[idx] = Math.round((rawEnergies[idx] / maxEnergy) * 100);
+    }
+    for (let c = 0; c < 12; c++) {
+      chromaOut[c] = Number((rawChroma[c] / maxChroma).toFixed(3));
+    }
   }
 }
 

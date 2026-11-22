@@ -197,23 +197,23 @@ Beginners can progress linearly through passing exams (`Standard` tier), or flip
 
 ## Roadmap
 
-Built around the completed `v0.1` core studio + bilingual EN/KO overhaul, FretMaster Studio aims to grow alongside contributors into a full open-source guitar learning ecosystem:
+Built from `v0.1` through the `v0.3.0` polyphonic chord & CI release, FretMaster Studio grows alongside contributors toward a full open-source electric guitar learning ecosystem. See the complete milestone breakdown in **[ROADMAP.md](ROADMAP.md)**.
 
 ```mermaid
 flowchart LR
-    V1["v0.1 (Shipped)\n39 Lessons · YIN AudioWorklet\n4-Tier Exam · Remotion Guides\nLight/Dark + EN/KO i18n"] --> V2["v0.2 · Hardware &amp; Tests\nNative Rust/C++ ASIO Bridge Daemon\nAuto Loopback Latency Measurement\nUnit Tests for DSP &amp; Judgment Math"]
-    V2 --> V3["v0.3 · Tunings &amp; Authoring\nAlternate Tunings (Drop D, Eb)\nCommunity Genre &amp; Solo Packs\nCustom TAB &amp; Backing Loop Editor"]
-    V3 --> V4["v0.4 · Polyphony &amp; Smart Drills\nPolyphonic Chord-Strum Detection\nTargeted Weak-Bar Drill Generator\nOptional Encrypted Progress Sync"]
-    V4 --> V5["v1.0 · Desktop &amp; Lesson PRs\nStandalone Desktop Studio App\nValidated Open Lesson Pack Ecosystem"]
+    V2["v0.1 – v0.2.6 (Shipped)\n39 Lessons · 4096 YIN DSP\nCount-In · Peak/Clip Meter\nAdaptive Latency · GTM"] --> V3["v0.3.0 (Current)\nPolyphonic Chord Detection (#4)\nCI DSP Tests & Audio Ping (#2)\nGTM Funnel Telemetry"]
+    V3 --> V4["v0.4.0\nHistory Charts & Drill Queue (#5)\nDrop D / Eb Tunings (#3)\nMute & Vibrato Coaching"]
+    V4 --> V5["v0.5.0\nNative Rust ASIO Bridge (#1)\nIR Cab Tone & Sampled Groove"]
+    V5 --> V6["v1.0.0\nCustom TAB Editor & Lesson PRs (#6)\nTablet Landscape PWA"]
 ```
 
 | Milestone | Focus | Planned Deliverables |
 | :--- | :--- | :--- |
-| **v0.1** *(Current)* | **Core Studio + Global i18n** | 39 bilingual lessons, AudioWorklet YIN DSP, 4 judgment tiers, Remotion visual guides, Light/Dark UI, EN/KO auto-detection |
-| **v0.2** | **Hardware Ecosystem &amp; Quality** | Open-source local **ASIO WebSocket Bridge (`ws://127.0.0.1:9420`)** daemon in Rust/C++, automated audio loopback calibration, DSP unit test suite |
-| **v0.3** | **Tunings &amp; Creator Tools** | `Drop D`, `Eb Standard`, and open-tuning fretboard overlays, expanded Blues/Jazz/City-Pop packs, custom progression &amp; TAB loop authoring |
-| **v0.4** | **Polyphonic Strums &amp; Adaptive Coaching** | Multi-pitch spectral chord verifier beyond single-note YIN + spaced-repetition weak-bar practice queues |
-| **v1.0** | **Desktop Packaging &amp; Open Lesson Packs** | Standalone desktop bundle free from browser permission sandboxes + schema-validated community lesson PR contributions |
+| **v0.1 – v0.2.6** *(Shipped)* | **Core Studio + Real Guitar UX** | 39 bilingual lessons, 4096-sample YIN DSP, context unison mapping, exam count-in & guitar auto-start, Peak/Clip gain meter, visual latency studio & per-bar adaptive calibration, Supabase OAuth sync |
+| **v0.3.0** *(Current)* | **Polyphonic Chords, CI & Telemetry** | 8192-point FFT chord-strum detection (`#4`), Node test suite (`tests/*.test.mjs`) + GitHub Actions CI + 1-click Acoustic Loopback Ping (`#2`), privacy-safe GTM learning funnel events |
+| **v0.4.0** | **Practice Retention & Tunings** | History charts & weak-bar adaptive drill queue (`#5`), `Drop D` / `Eb Standard` / `Open G` alternate tunings (`#3`), live muting & vibrato coaching |
+| **v0.5.0** | **Hardware Ecosystem & Backing** | Open-source local **ASIO / CoreAudio WebSocket Bridge (`:9420`)** daemon in Rust (`#1`), cabinet IR tone monitoring & sampled groove backing |
+| **v1.0.0** | **Creator Tools & Mobile PWA** | Custom TAB & loop editor, community lesson PR packs (`#6`), tablet landscape studio layout & offline PWA sync |
 
 ---
 

@@ -33,6 +33,9 @@ import type {
   ScaleOverlayNote,
 } from '@/types/guitar';
 
+export const POLY_SPECTRUM_MIN_MIDI = 40;
+export const POLY_SPECTRUM_COUNT = 45;
+
 export interface JudgmentTierSpec {
   id: JudgmentTier;
   label: string;
@@ -339,7 +342,9 @@ export class LowLatencyGuitarAudioEngine {
           msg.clarity,
           'worklet',
           msg.peakDb,
-          msg.isClipping
+          msg.isClipping,
+          msg.chroma,
+          msg.noteSpectrum
         );
       };
 
@@ -519,7 +524,9 @@ export class LowLatencyGuitarAudioEngine {
                 payload.clarity ?? 0.9,
                 'asio-bridge',
                 peakVal,
-                clipVal
+                clipVal,
+                Array.isArray(payload.chroma) ? payload.chroma : undefined,
+                Array.isArray(payload.noteSpectrum) ? payload.noteSpectrum : undefined
               );
             }
           } catch {
@@ -598,17 +605,107 @@ export class LowLatencyGuitarAudioEngine {
 
       let freq = 0;
       let clarity = 0;
+      let poly: { chroma: number[]; noteSpectrum: number[] } | undefined;
       if (rmsDb >= this.config.noiseGateDb) {
         const res = this.runYinSimple(scaled, sr);
         freq = res.frequency;
         clarity = res.clarity;
+        poly = this.computePolyphonicFallback(scaled, sr);
       }
 
-      this.handleRawAnalysis(freq, rmsDb, isOnset, clarity, 'analyser', peakDb, isClipping);
+      this.handleRawAnalysis(
+        freq,
+        rmsDb,
+        isOnset,
+        clarity,
+        'analyser',
+        peakDb,
+        isClipping,
+        poly?.chroma,
+        poly?.noteSpectrum
+      );
       this.fallbackRafId = requestAnimationFrame(tick);
     };
 
     this.fallbackRafId = requestAnimationFrame(tick);
+  }
+
+  private computePolyphonicFallback(
+    frame: Float32Array,
+    sr: number
+  ): { chroma: number[]; noteSpectrum: number[] } {
+    const N = 8192;
+    const len = Math.min(frame.length, 4096);
+    let mean = 0;
+    for (let i = 0; i < len; i++) mean += frame[i];
+    mean /= Math.max(1, len);
+
+    const re = new Float32Array(N);
+    const im = new Float32Array(N);
+    for (let i = 0; i < len; i++) {
+      const w = 0.5 * (1 - Math.cos((2 * Math.PI * i) / (len - 1)));
+      re[i] = (frame[i] - mean) * w;
+    }
+
+    // Bit-reversal permutation + iterative FFT
+    for (let i = 1, j = 0; i < N; i++) {
+      let bit = N >> 1;
+      for (; j & bit; bit >>= 1) j ^= bit;
+      j ^= bit;
+      if (i < j) {
+        const tmp = re[i];
+        re[i] = re[j];
+        re[j] = tmp;
+      }
+    }
+    for (let size = 2; size <= N; size <<= 1) {
+      const half = size >> 1;
+      const step = (-2 * Math.PI) / size;
+      for (let i = 0; i < N; i += size) {
+        for (let k = 0; k < half; k++) {
+          const ang = k * step;
+          const wr = Math.cos(ang);
+          const wi = Math.sin(ang);
+          const even = i + k;
+          const odd = even + half;
+          const tRe = re[odd] * wr - im[odd] * wi;
+          const tIm = re[odd] * wi + im[odd] * wr;
+          re[odd] = re[even] - tRe;
+          im[odd] = im[even] - tIm;
+          re[even] += tRe;
+          im[even] += tIm;
+        }
+      }
+    }
+
+    const binHz = sr / N;
+    const halfBins = N >> 1;
+    const rawEnergies = new Float32Array(POLY_SPECTRUM_COUNT);
+    const rawChroma = new Float32Array(12);
+    let maxE = 1e-6;
+    const bracketMag = (f: number) => {
+      const exact = f / binHz;
+      const b0 = Math.max(1, Math.min(halfBins - 2, Math.floor(exact)));
+      const b1 = b0 + 1;
+      const m0 = Math.hypot(re[b0], im[b0]);
+      const m1 = Math.hypot(re[b1], im[b1]);
+      return m0 > m1 ? m0 : m1;
+    };
+    for (let idx = 0; idx < POLY_SPECTRUM_COUNT; idx++) {
+      const midi = POLY_SPECTRUM_MIN_MIDI + idx;
+      const f1 = 440 * Math.pow(2, (midi - 69) / 12);
+      const mag1 = bracketMag(f1);
+      const mag2 = f1 * 2 < sr * 0.45 ? bracketMag(f1 * 2) : 0;
+      const e = Math.sqrt(mag1 * (0.55 * mag1 + 0.45 * mag2));
+      rawEnergies[idx] = e;
+      if (e > maxE) maxE = e;
+      rawChroma[midi % 12] += e;
+    }
+    const maxC = Math.max(1e-6, ...rawChroma);
+    return {
+      noteSpectrum: Array.from(rawEnergies, (e) => Math.round((e / maxE) * 100)),
+      chroma: Array.from(rawChroma, (c) => Number((c / maxC).toFixed(3))),
+    };
   }
 
   private runYinSimple(frame: Float32Array, sr: number): { frequency: number; clarity: number } {
@@ -722,7 +819,9 @@ export class LowLatencyGuitarAudioEngine {
     clarity: number,
     source: LivePitchData['source'],
     peakDb: number = rmsDb,
-    isClipping: boolean = peakDb >= -0.5
+    isClipping: boolean = peakDb >= -0.5,
+    chroma?: number[],
+    noteSpectrum?: number[]
   ) {
     const nowMs = performance.now() - this.config.latencyOffsetMs;
 
@@ -741,15 +840,26 @@ export class LowLatencyGuitarAudioEngine {
       if (rmsDb < this.config.noiseGateDb && this.silenceResetCount >= 3) {
         this.resetPitchTrackingState();
       }
-      if (isClipping || this.lastPitch.isActive || nowMs - this.lastUiEmitMs >= 45) {
+      const hasPolyActive =
+        rmsDb >= this.config.noiseGateDb &&
+        Array.isArray(noteSpectrum) &&
+        noteSpectrum.length === POLY_SPECTRUM_COUNT;
+      if (
+        isClipping ||
+        (hasPolyActive && isOnset) ||
+        this.lastPitch.isActive ||
+        nowMs - this.lastUiEmitMs >= 45
+      ) {
         this.lastUiEmitMs = nowMs;
         this.emit({
           ...EMPTY_PITCH,
           rmsDb,
           peakDb,
           isClipping,
-          isOnset: false,
-          isActive: false,
+          chroma: hasPolyActive ? chroma : undefined,
+          noteSpectrum: hasPolyActive ? noteSpectrum : undefined,
+          isOnset: hasPolyActive && isOnset,
+          isActive: hasPolyActive,
           timestampMs: nowMs,
           source,
         });
@@ -863,6 +973,8 @@ export class LowLatencyGuitarAudioEngine {
       isOnset: effectiveOnset,
       isActive: true,
       timestampMs: nowMs,
+      chroma,
+      noteSpectrum,
       detectedString: guess.string,
       detectedFret: guess.fret,
       source,
@@ -1035,23 +1147,159 @@ export function updateAdaptiveLatencyProfile(
   };
 }
 
+export interface PolyphonicChordResult {
+  passed: boolean;
+  matchRatio: number;
+  matchedNotes: number;
+  totalNotes: number;
+  wrongThirdDetected: boolean;
+  unmutedStringWarning: boolean;
+}
+
+const POLY_ENERGY_THRESHOLDS: Record<JudgmentTier, number> = {
+  relaxed: 16,
+  standard: 22,
+  tight: 28,
+  studio: 34,
+};
+
+const POLY_MIN_RATIO: Record<JudgmentTier, number> = {
+  relaxed: 0.6,
+  standard: 0.67,
+  tight: 0.75,
+  studio: 0.85,
+};
+
+export function evaluatePolyphonicChord(
+  chordNotes: NonNullable<NoteEvent['chordNotes']>,
+  noteSpectrum: number[],
+  chroma?: number[],
+  tier: JudgmentTier = 'standard'
+): PolyphonicChordResult {
+  const totalNotes = chordNotes.length;
+  if (totalNotes === 0) {
+    return {
+      passed: false,
+      matchRatio: 0,
+      matchedNotes: 0,
+      totalNotes: 0,
+      wrongThirdDetected: false,
+      unmutedStringWarning: false,
+    };
+  }
+
+  const noteThresh = POLY_ENERGY_THRESHOLDS[tier];
+  const minRatio = POLY_MIN_RATIO[tier];
+
+  const getEnergy = (midi: number): number => {
+    const idx = midi - POLY_SPECTRUM_MIN_MIDI;
+    if (idx >= 0 && idx < POLY_SPECTRUM_COUNT && idx < noteSpectrum.length) {
+      return noteSpectrum[idx];
+    }
+    return (chroma?.[midi % 12] ?? 0) * 100;
+  };
+
+  const uniqueTargetPcs = new Set<number>();
+  const matchedUniquePcs = new Set<number>();
+  let matchedNotes = 0;
+
+  const targetMidis = chordNotes.map((cn) => {
+    const m = getNoteMidi(cn.string, cn.fret);
+    uniqueTargetPcs.add(m % 12);
+    return m;
+  });
+
+  const rootCn = chordNotes.find((cn) => cn.intervalLabel === 'R');
+  const rootMidi = rootCn ? getNoteMidi(rootCn.string, rootCn.fret) : Math.min(...targetMidis);
+  const rootPc = rootMidi % 12;
+
+  for (const m of targetMidis) {
+    if (getEnergy(m) >= noteThresh) {
+      matchedNotes++;
+      matchedUniquePcs.add(m % 12);
+    }
+  }
+
+  // Distinguish Major 3rd vs Minor 3rd cleanly in the active voicing's octave
+  const major3Pc = (rootPc + 4) % 12;
+  const minor3Pc = (rootPc + 3) % 12;
+  const expectsMajor3 = uniqueTargetPcs.has(major3Pc) && !uniqueTargetPcs.has(minor3Pc);
+  const expectsMinor3 = uniqueTargetPcs.has(minor3Pc) && !uniqueTargetPcs.has(major3Pc);
+  let wrongThirdDetected = false;
+
+  if (expectsMajor3) {
+    for (const m of targetMidis) {
+      if (m % 12 === major3Pc) {
+        const targetE = getEnergy(m);
+        const oppositeE = getEnergy(m - 1);
+        if (oppositeE >= 26 && oppositeE > targetE * 1.25) {
+          wrongThirdDetected = true;
+        }
+      }
+    }
+  } else if (expectsMinor3) {
+    for (const m of targetMidis) {
+      if (m % 12 === minor3Pc) {
+        const targetE = getEnergy(m);
+        const oppositeE = getEnergy(m + 1);
+        if (oppositeE >= 26 && oppositeE > targetE * 1.25) {
+          wrongThirdDetected = true;
+        }
+      }
+    }
+  }
+
+  // Warn if unmuted low open bass strings (6E=40, 5A=45, 4D=50) outside the chord ring loudly
+  let unmutedStringWarning = false;
+  for (const openMidi of [40, 45, 50]) {
+    if (!uniqueTargetPcs.has(openMidi % 12) && getEnergy(openMidi) >= 55) {
+      unmutedStringWarning = true;
+      break;
+    }
+  }
+
+  const matchRatio = Number((matchedNotes / totalNotes).toFixed(2));
+  const minUniquePcs = Math.min(2, uniqueTargetPcs.size);
+  const passed =
+    !wrongThirdDetected &&
+    matchedUniquePcs.size >= minUniquePcs &&
+    matchRatio >= minRatio;
+
+  return {
+    passed,
+    matchRatio,
+    matchedNotes,
+    totalNotes,
+    wrongThirdDetected,
+    unmutedStringWarning,
+  };
+}
+
 export function evaluateNoteHit(
   targetNote: NoteEvent,
   detectedMidiFloat: number,
   timingErrorMs: number,
   tier: JudgmentTier,
-  peakBendCents = 0
+  peakBendCents = 0,
+  livePoly?: {
+    noteSpectrum?: number[];
+    chroma?: number[];
+    source?: LivePitchData['source'];
+  }
 ): NoteEvaluation {
   const spec = JUDGMENT_TIERS[tier];
   const baseTargetMidi = getNoteMidi(targetNote.string, targetNote.fret);
   const expectedBend = targetNote.bendCents ?? 0;
 
-  // Pitch comparison (chord voicings allow octave-equivalent pitch classes)
+  // Pitch comparison (polyphonic spectrum check for strummed chords on real audio)
   const targetMidiWithBend = baseTargetMidi + expectedBend / 100;
   const rawCentsDiff = Math.round((detectedMidiFloat - baseTargetMidi) * 100);
   const bendTargetCentsDiff = Math.round((detectedMidiFloat - targetMidiWithBend) * 100);
 
   let pitchOk = false;
+  let chordMatchRatio: number | undefined;
+  let unmutedStringWarning: boolean | undefined;
+
   if (expectedBend > 0) {
     const achieved = Math.max(peakBendCents, rawCentsDiff);
     const minRequired = expectedBend * spec.bendCompletionRatio;
@@ -1059,13 +1307,31 @@ export function evaluateNoteHit(
       achieved >= minRequired &&
       Math.abs(bendTargetCentsDiff) <= spec.centsTolerance + (expectedBend * (1 - spec.bendCompletionRatio));
   } else if (targetNote.chordNotes && targetNote.chordNotes.length > 0) {
-    // Any note belonging to the chord voicing (or its octave-equivalent pitch class) passes pitch check
-    pitchOk = targetNote.chordNotes.some((cn) => {
-      const m = getNoteMidi(cn.string, cn.fret);
-      return [-12, 0, 12].some(
-        (shift) => Math.abs((detectedMidiFloat - (m + shift)) * 100) <= spec.centsTolerance + 18
+    if (
+      livePoly?.noteSpectrum &&
+      livePoly.noteSpectrum.length === POLY_SPECTRUM_COUNT &&
+      livePoly.source !== 'simulated'
+    ) {
+      const polyRes = evaluatePolyphonicChord(
+        targetNote.chordNotes,
+        livePoly.noteSpectrum,
+        livePoly.chroma,
+        tier
       );
-    });
+      pitchOk = polyRes.passed;
+      chordMatchRatio = polyRes.matchRatio;
+      if (polyRes.unmutedStringWarning) {
+        unmutedStringWarning = true;
+      }
+    } else {
+      // Fallback single-note chord check (simulated clicks or bridges without spectrum)
+      pitchOk = targetNote.chordNotes.some((cn) => {
+        const m = getNoteMidi(cn.string, cn.fret);
+        return [-12, 0, 12].some(
+          (shift) => Math.abs((detectedMidiFloat - (m + shift)) * 100) <= spec.centsTolerance + 18
+        );
+      });
+    }
   } else {
     pitchOk = Math.abs(rawCentsDiff) <= spec.centsTolerance;
   }
@@ -1089,9 +1355,16 @@ export function evaluateNoteHit(
     noteId: targetNote.id,
     result,
     timingErrorMs: Math.round(timingErrorMs),
-    centsError: expectedBend > 0 ? bendTargetCentsDiff : rawCentsDiff,
+    centsError:
+      expectedBend > 0
+        ? bendTargetCentsDiff
+        : targetNote.chordNotes && targetNote.chordNotes.length > 0
+        ? 0
+        : rawCentsDiff,
     bendAchievedCents: expectedBend > 0 ? Math.max(0, Math.round(peakBendCents)) : undefined,
-    detectedMidi: Math.round(detectedMidiFloat),
+    detectedMidi: detectedMidiFloat > 0 ? Math.round(detectedMidiFloat) : undefined,
+    chordMatchRatio,
+    unmutedStringWarning,
   };
 }
 

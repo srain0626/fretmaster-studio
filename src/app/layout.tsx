@@ -112,7 +112,7 @@ const JSON_LD = {
   },
   image: `${SITE_URL}/og-thumbnail.jpg`,
   screenshot: `${SITE_URL}/og-thumbnail.jpg`,
-  softwareVersion: "0.2.6",
+  softwareVersion: "0.3.0",
   license: "https://www.gnu.org/licenses/gpl-3.0.html",
   author: {
     "@type": "Person",

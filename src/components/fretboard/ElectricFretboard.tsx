@@ -595,12 +595,33 @@ export function ElectricFretboard({
                   const cx = getColX(cn.fret);
                   const cy = getStringY(cn.string);
                   const col = getFingerColorHex(cn.finger);
+                  const cnMidi = getNoteMidi(cn.string, cn.fret);
+                  const specIdx = cnMidi - 40;
+                  const isResonating = Boolean(
+                    livePitch.isActive &&
+                      livePitch.noteSpectrum &&
+                      livePitch.noteSpectrum.length === 45 &&
+                      specIdx >= 0 &&
+                      specIdx < 45 &&
+                      livePitch.noteSpectrum[specIdx] >= 22
+                  );
                   return (
                     <g
                       key={`active-ch-${currentNote.id}-${cn.string}-${cn.fret}`}
                       className="cursor-pointer"
                       onClick={() => onFretClick?.(cn.string, cn.fret)}
                     >
+                      {isResonating && (
+                        <circle
+                          cx={cx}
+                          cy={cy}
+                          r={16}
+                          fill="none"
+                          stroke="#34D399"
+                          strokeWidth="2.25"
+                          className="pointer-events-none"
+                        />
+                      )}
                       <motion.circle
                         cx={cx}
                         cy={cy}

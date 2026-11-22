@@ -56,6 +56,7 @@ import {
   type AudioLatencyTelemetry,
 } from '@/lib/lowLatencyAudioEngine';
 import { guitarSynthEngine } from '@/lib/guitarSynthEngine';
+import { trackStudioEvent } from '@/lib/analytics';
 import { getFingerName, getNoteMidi, midiToNoteName } from '@/lib/musicTheory';
 import { useLocale } from '@/lib/i18n';
 import { buildSafeErrorEntry, type SafeErrorLogEntry } from '@/lib/errorSanitizer';
@@ -588,6 +589,11 @@ function AuthenticatedStudioWorkspace({
     setCompletedTasks(new Set());
     setGuideSection('both');
     setGuideDialogOpen(true);
+    trackStudioEvent('lesson_selected', {
+      lesson_id: next.id,
+      lesson_code: next.code,
+      phase_id: next.phaseId,
+    });
 
     // Context-aware defaults per curriculum phase
     const nextIsPhase1 = next.phaseId === 'phase-1';
@@ -687,6 +693,14 @@ function AuthenticatedStudioWorkspace({
       setLastTelemetry(report);
       setReportOpen(true);
       void recordPracticeSession(user.id, report);
+      trackStudioEvent('exam_completed', {
+        lesson_id: lesson.id,
+        tier: judgmentTier,
+        score,
+        grade,
+        passed,
+        bpm,
+      });
 
       if (passed) {
         setCompletedTasks((prev) => new Set(prev).add('exam'));
@@ -772,6 +786,11 @@ function AuthenticatedStudioWorkspace({
       Math.abs(nextProfile.estimatedOffsetMs - cfg.latencyOffsetMs) >= 2
     ) {
       handleUpdateAudioConfig({ latencyOffsetMs: nextProfile.estimatedOffsetMs });
+      trackStudioEvent('latency_calibrated', {
+        method: 'adaptive_bar',
+        offset_ms: nextProfile.estimatedOffsetMs,
+        confidence_pct: nextProfile.confidencePct,
+      });
     }
   }, [handleUpdateAudioConfig, persistLatencyProfile]);
 
@@ -973,6 +992,10 @@ function AuthenticatedStudioWorkspace({
     (mode: PracticeMode) => {
       resetSessionState();
       setPracticeMode(mode);
+      trackStudioEvent('practice_mode_started', {
+        lesson_id: lesson.id,
+        mode,
+      });
 
       const nextGuide = mode !== 'jam' && mode !== 'exam';
       const nextDrums = mode === 'jam' ? true : enableDrumsAndBass;
@@ -1040,6 +1063,7 @@ function AuthenticatedStudioWorkspace({
       examAutoStart,
       examCountInBars,
       isAudioRunning,
+      lesson.id,
       resetSessionState,
       startTransportForMode,
       tr,
@@ -1148,7 +1172,12 @@ function AuthenticatedStudioWorkspace({
           livePitch.midiFloat,
           0,
           judgmentTier,
-          0
+          0,
+          {
+            noteSpectrum: livePitch.noteSpectrum,
+            chroma: livePitch.chroma,
+            source: livePitch.source,
+          }
         );
         if (firstEv.result !== 'miss') {
           startTransportForMode('exam', { countInBeats: 0 });
@@ -1183,6 +1212,8 @@ function AuthenticatedStudioWorkspace({
     // Wait-for-Note Mode
     if (practiceMode === 'wait' && targetNote) {
       if (!hasSignalForStepMode) return;
+      const isChordTarget = Boolean(targetNote.chordNotes && targetNote.chordNotes.length > 0);
+      if (!isChordTarget && (livePitch.frequency <= 0 || livePitch.nearestMidi <= 0)) return;
       if (targetNote.bendCents) {
         const spec = JUDGMENT_TIERS[judgmentTier];
         if (peakBendRef.current < targetNote.bendCents * spec.bendCompletionRatio) {
@@ -1195,12 +1226,25 @@ function AuthenticatedStudioWorkspace({
         livePitch.midiFloat,
         0,
         judgmentTier,
-        peakBendRef.current
+        peakBendRef.current,
+        {
+          noteSpectrum: livePitch.noteSpectrum,
+          chroma: livePitch.chroma,
+          source: livePitch.source,
+        }
       );
 
       if (ev.result !== 'miss') {
-        if (!canAcceptPitchForNote(targetNote.id, livePitch.nearestMidi, livePitch.isOnset)) {
+        if (
+          !isChordTarget &&
+          !canAcceptPitchForNote(targetNote.id, livePitch.nearestMidi, livePitch.isOnset)
+        ) {
           return;
+        }
+        if (isChordTarget && !livePitch.isOnset && livePitch.source !== 'simulated') {
+          const prevAcc = lastAcceptedRef.current;
+          if (prevAcc && prevAcc.noteId === targetNote.id) return;
+          if (prevAcc && nowWallMs - prevAcc.at < 260 && !prevAcc.hadSilence) return;
         }
         lastAcceptedRef.current = {
           noteId: targetNote.id,
@@ -1218,10 +1262,15 @@ function AuthenticatedStudioWorkspace({
         setFeedbackBanner({
           result: ev.result,
           title: tr('Nice', '좋아요'),
-          detail: tr(
-            `String ${targetNote.string}, Fret ${targetNote.fret} recognized`,
-            `${targetNote.string}번 줄 ${targetNote.fret}프렛 인식 완료`
-          ),
+          detail: ev.unmutedStringWarning
+            ? tr(
+                'Chord matched · mute unused low strings',
+                '코드 인식 완료 · 치지 않는 저음현을 뮤트해 보세요'
+              )
+            : tr(
+                `String ${targetNote.string}, Fret ${targetNote.fret} recognized`,
+                `${targetNote.string}번 줄 ${targetNote.fret}프렛 인식 완료`
+              ),
         });
 
         if (activeNoteIndex + 1 < lesson.notes.length) {
@@ -1271,6 +1320,18 @@ function AuthenticatedStudioWorkspace({
           if (nowWallMs - hold.startedAt < 110) return;
         }
 
+        if (isChordTarget) {
+          setFeedbackBanner({
+            result: 'miss',
+            title: tr('Check Chord Strum', '코드 스트럼 확인'),
+            detail: tr(
+              'Strum all highlighted chord notes cleanly together',
+              '지판에 표시된 코드 구성음을 모두 깨끗하게 함께 스트럼해 보세요'
+            ),
+          });
+          return;
+        }
+
         const targetMidi = getNoteMidi(targetNote.string, targetNote.fret);
         const diffSemis = Math.round(livePitch.midiFloat - targetMidi);
         const absSemis = Math.abs(diffSemis);
@@ -1315,6 +1376,8 @@ function AuthenticatedStudioWorkspace({
       const targetIdx = lesson.notes.findIndex((_, i) => !earCopyUnlockedIndices.has(i));
       if (targetIdx === -1) return;
       const earTarget = lesson.notes[targetIdx];
+      const isEarChord = Boolean(earTarget.chordNotes && earTarget.chordNotes.length > 0);
+      if (!isEarChord && (livePitch.frequency <= 0 || livePitch.nearestMidi <= 0)) return;
       if (earTarget.bendCents) {
         const spec = JUDGMENT_TIERS[judgmentTier];
         if (peakBendRef.current < earTarget.bendCents * spec.bendCompletionRatio) {
@@ -1327,7 +1390,12 @@ function AuthenticatedStudioWorkspace({
         livePitch.midiFloat,
         0,
         judgmentTier,
-        peakBendRef.current
+        peakBendRef.current,
+        {
+          noteSpectrum: livePitch.noteSpectrum,
+          chroma: livePitch.chroma,
+          source: livePitch.source,
+        }
       );
 
       if (ev.result !== 'miss') {
@@ -1359,6 +1427,10 @@ function AuthenticatedStudioWorkspace({
 
         if (nextSet.size === lesson.notes.length) {
           setCompletedTasks((prev) => new Set(prev).add('earcopy'));
+          trackStudioEvent('earcopy_completed', {
+            lesson_id: lesson.id,
+            hints_used: earCopyHintLevel,
+          });
           setProgress((prev) => {
             const existing = prev.lessonRecords[lesson.id];
             const nextRecords = {
@@ -1490,6 +1562,9 @@ function AuthenticatedStudioWorkspace({
 
       if (!closestNote || Math.abs(minBeatDiff) > 1.0) return;
 
+      const isClosestChord = Boolean(closestNote.chordNotes && closestNote.chordNotes.length > 0);
+      if (!isClosestChord && (livePitch.frequency <= 0 || livePitch.nearestMidi <= 0)) return;
+
       const existingEval = evaluationsRef.current[closestNote.id];
       const rankOf = (r: NoteEvaluation['result']) =>
         r === 'perfect' ? 3 : r === 'good' ? 2 : r === 'pass' ? 1 : 0;
@@ -1497,7 +1572,7 @@ function AuthenticatedStudioWorkspace({
       // Never downgrade an already-passed evaluation on the same note within a pass
       if (existingEval && existingEval.result !== 'miss') {
         if (!livePitch.isOnset && livePitch.clarity < 0.6) return;
-      } else if (!livePitch.isOnset && livePitch.clarity < 0.6) {
+      } else if (!isClosestChord && !livePitch.isOnset && livePitch.clarity < 0.6) {
         return;
       }
 
@@ -1507,7 +1582,12 @@ function AuthenticatedStudioWorkspace({
         livePitch.midiFloat,
         timingErrorMs,
         judgmentTier,
-        peakBendRef.current
+        peakBendRef.current,
+        {
+          noteSpectrum: livePitch.noteSpectrum,
+          chroma: livePitch.chroma,
+          source: livePitch.source,
+        }
       );
 
       // Accumulate clean physical guitar note onsets to refine latency progressively per bar
@@ -1557,7 +1637,11 @@ function AuthenticatedStudioWorkspace({
       }
 
       const timingMsg =
-        Math.abs(ev.timingErrorMs) <= 20
+        ev.result === 'miss' && isClosestChord
+          ? tr('Check chord shape and clean strum', '코드 운지와 스트럼 울림을 확인해 보세요')
+          : ev.unmutedStringWarning && ev.result !== 'miss'
+          ? tr('Hit · mute unused low strings', '정확해요 · 치지 않는 저음현 뮤트 확인')
+          : Math.abs(ev.timingErrorMs) <= 20
           ? tr('On beat', '정확한 박자')
           : ev.timingErrorMs < 0
           ? tr(`Slightly early (${ev.timingErrorMs}ms)`, `조금 빠름 (${ev.timingErrorMs}ms)`)
@@ -1574,6 +1658,7 @@ function AuthenticatedStudioWorkspace({
     audioConfig.latencyOffsetMs,
     audioConfig.noiseGateDb,
     bpm,
+    earCopyHintLevel,
     earCopyUnlockedIndices,
     examCountInBars,
     flushAdaptiveLatency,
@@ -1662,6 +1747,11 @@ function AuthenticatedStudioWorkspace({
       const tel = await guitarAudioEngine.start(audioConfig);
       setAudioTelemetry(tel);
       setIsAudioRunning(true);
+      trackStudioEvent('audio_connected', {
+        input_mode: audioConfig.inputMode,
+        pipeline_mode: tel.pipelineMode,
+        sample_rate: tel.sampleRate,
+      });
     } catch (err) {
       const fallbackMsg = tr('Audio connection failed', '오디오 연결 실패');
       setAudioError(err instanceof Error ? err.message : fallbackMsg);
@@ -1692,6 +1782,11 @@ function AuthenticatedStudioWorkspace({
       const tel = await guitarAudioEngine.start(audioConfig);
       setAudioTelemetry(tel);
       setIsAudioRunning(true);
+      trackStudioEvent('audio_connected', {
+        input_mode: audioConfig.inputMode,
+        pipeline_mode: tel.pipelineMode,
+        sample_rate: tel.sampleRate,
+      });
     } catch (err) {
       const fallbackMsg = tr('Audio restart failed', '오디오 재시작 실패');
       setAudioError(err instanceof Error ? err.message : fallbackMsg);
@@ -2414,6 +2509,11 @@ function AuthenticatedStudioWorkspace({
             freeExploreMode,
             dailyGoalSeconds,
           }));
+          trackStudioEvent('onboarding_completed', {
+            locale,
+            daily_goal_minutes: Math.round(dailyGoalSeconds / 60),
+            free_explore: freeExploreMode,
+          });
           setOnboardingOpen(false);
           setGuideSection('both');
           setGuideDialogOpen(true);

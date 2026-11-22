@@ -247,6 +247,22 @@ export class ElectricGuitarSynthEngine {
     osc.stop(t + 0.06);
   }
 
+  public playCalibrationPing(scheduledTime?: number) {
+    const ctx = this.ensureContext();
+    const t = scheduledTime ?? ctx.currentTime;
+    const osc = ctx.createOscillator();
+    const env = ctx.createGain();
+    osc.type = 'sine';
+    osc.frequency.setValueAtTime(1800, t);
+    env.gain.setValueAtTime(0.001, t);
+    env.gain.linearRampToValueAtTime(0.65, t + 0.001);
+    env.gain.exponentialRampToValueAtTime(0.0001, t + 0.014);
+    osc.connect(env);
+    env.connect(ctx.destination);
+    osc.start(t);
+    osc.stop(t + 0.02);
+  }
+
   private playDrumHit(type: 'kick' | 'snare' | 'hat', t: number) {
     const ctx = this.ensureContext();
     if (type === 'kick') {

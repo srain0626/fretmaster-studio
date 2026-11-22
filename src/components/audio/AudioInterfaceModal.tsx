@@ -24,6 +24,7 @@ import {
   type AudioLatencyTelemetry,
 } from '@/lib/lowLatencyAudioEngine';
 import { guitarSynthEngine } from '@/lib/guitarSynthEngine';
+import { trackStudioEvent } from '@/lib/analytics';
 import { useLocale } from '@/lib/i18n';
 import type {
   AdaptiveLatencyProfile,
@@ -36,6 +37,10 @@ const CAL_BEAT_MS = 800; // 75 BPM steady groove
 const CAL_COUNT_IN_BEATS = 4; // 3.2s visual + audio count-in before first measured beat
 const CAL_TARGET_TAPS = 6;
 const CAL_MAX_MEASURE_BEATS = 16;
+
+const PING_COUNT = 4;
+const PING_LEAD_MS = 900;
+const PING_STEP_MS = 700;
 
 interface TapSample {
   beatIdx: number;
@@ -82,13 +87,23 @@ export function AudioInterfaceModal({
   const [clipHoldActive, setClipHoldActive] = useState(false);
   const peakHoldAtRef = useRef(0);
 
-  // Visual 6-Tap Calibration Studio State
+  // Visual 6-Tap & Acoustic Ping Calibration Studio State
+  const [calMode, setCalMode] = useState<'visual' | 'acoustic'>('visual');
   const [calPhase, setCalPhase] = useState<'idle' | 'count-in' | 'measuring' | 'done'>('idle');
   const [calBeatFloat, setCalBeatFloat] = useState(-CAL_COUNT_IN_BEATS);
   const [calCountInRemaining, setCalCountInRemaining] = useState(0);
   const [tapSamples, setTapSamples] = useState<TapSample[]>([]);
   const [lastTapFeedback, setLastTapFeedback] = useState<{ errorMs: number; at: number } | null>(null);
   const [calResult, setCalResult] = useState<ReturnType<typeof computeCalibratedLatency> | null>(null);
+
+  const [pingPhase, setPingPhase] = useState<'idle' | 'running' | 'done' | 'failed'>('idle');
+  const [pingSentCount, setPingSentCount] = useState(0);
+  const [pingDetectedCount, setPingDetectedCount] = useState(0);
+  const pingTimersRef = useRef<number[]>([]);
+  const pingSentTimesRef = useRef<number[]>([]);
+  const pingCapturedIdxRef = useRef<Set<number>>(new Set());
+  const pingPhaseRef = useRef<'idle' | 'running' | 'done' | 'failed'>('idle');
+  const pingDetectedRef = useRef<number[]>([]);
 
   const calPhaseRef = useRef<'idle' | 'count-in' | 'measuring' | 'done'>('idle');
   const gridOriginMsRef = useRef(0);
@@ -97,6 +112,20 @@ export function AudioInterfaceModal({
   const recordedBeatsRef = useRef<Set<number>>(new Set());
   const lastAcceptedHitMsRef = useRef(0);
   const tapSamplesRef = useRef<TapSample[]>([]);
+
+  const clearPingTimers = useCallback(() => {
+    pingTimersRef.current.forEach((id) => window.clearTimeout(id));
+    pingTimersRef.current = [];
+  }, []);
+
+  const stopAcousticPing = useCallback(
+    (nextPhase: 'idle' | 'done' | 'failed' = 'idle') => {
+      clearPingTimers();
+      pingPhaseRef.current = nextPhase;
+      setPingPhase(nextPhase);
+    },
+    [clearPingTimers]
+  );
 
   const cancelCalRaf = useCallback(() => {
     if (calRafIdRef.current !== null) {
@@ -118,16 +147,19 @@ export function AudioInterfaceModal({
   useEffect(() => {
     if (!open) {
       cancelCalRaf();
+      clearPingTimers();
       calPhaseRef.current = 'idle';
+      pingPhaseRef.current = 'idle';
       const t = window.setTimeout(() => {
         setBridgeTestState({ status: 'idle' });
         setCalPhase('idle');
         setCalCountInRemaining(0);
+        setPingPhase('idle');
       }, 0);
       return () => window.clearTimeout(t);
     }
     void guitarAudioEngine.listInputDevices().then(setDevices);
-  }, [cancelCalRaf, open]);
+  }, [cancelCalRaf, clearPingTimers, open]);
 
   // Track peak-hold and brief clip warnings across incoming DSP frames
   const isClipNow = isAudioRunning && (livePitch.isClipping || livePitch.peakDb >= -0.5);
@@ -217,6 +249,11 @@ export function AudioInterfaceModal({
         const res = computeCalibratedLatency(rawList);
         onUpdateConfig({ latencyOffsetMs: res.offsetMs });
         onRecordManualCalibrationSamples?.(rawList);
+        trackStudioEvent('latency_calibrated', {
+          method: 'visual_6tap',
+          offset_ms: res.offsetMs,
+          quality: res.quality,
+        });
         setCalResult(res);
         stopCalibration('done');
       }
@@ -233,9 +270,98 @@ export function AudioInterfaceModal({
     stopCalibration,
   ]);
 
+  // Capture Acoustic Loopback Ping reflections
   useEffect(() => {
-    return () => cancelCalRaf();
-  }, [cancelCalRaf]);
+    if (pingPhase !== 'running' || livePitch.source === 'simulated') return;
+    if (!livePitch.isOnset && livePitch.peakDb <= config.noiseGateDb + 8) return;
+    const sent = pingSentTimesRef.current;
+    if (sent.length === 0) return;
+
+    const now = performance.now();
+    for (let i = sent.length - 1; i >= 0; i--) {
+      if (pingCapturedIdxRef.current.has(i)) continue;
+      const elapsed = now - sent[i];
+      if (elapsed >= 5 && elapsed <= 260) {
+        pingCapturedIdxRef.current.add(i);
+        const rounded = Math.round(elapsed);
+        const updated = [...pingDetectedRef.current, rounded];
+        pingDetectedRef.current = updated;
+        const t = window.setTimeout(() => {
+          setPingDetectedCount(updated.length);
+        }, 0);
+        return () => window.clearTimeout(t);
+      }
+    }
+  }, [
+    config.noiseGateDb,
+    livePitch.isOnset,
+    livePitch.peakDb,
+    livePitch.source,
+    livePitch.timestampMs,
+    pingPhase,
+  ]);
+
+  useEffect(() => {
+    return () => {
+      cancelCalRaf();
+      clearPingTimers();
+    };
+  }, [cancelCalRaf, clearPingTimers]);
+
+  const startAcousticPing = () => {
+    stopCalibration('idle');
+    clearPingTimers();
+    pingSentTimesRef.current = [];
+    pingCapturedIdxRef.current = new Set();
+    pingDetectedRef.current = [];
+    pingPhaseRef.current = 'running';
+    setPingPhase('running');
+    setPingSentCount(0);
+    setPingDetectedCount(0);
+    setCalResult(null);
+    setTapSamples([]);
+
+    for (let idx = 0; idx < PING_COUNT; idx++) {
+      const fireId = window.setTimeout(() => {
+        if (pingPhaseRef.current !== 'running') return;
+        pingSentTimesRef.current.push(performance.now());
+        setPingSentCount(idx + 1);
+        try {
+          guitarSynthEngine.playCalibrationPing();
+        } catch {
+          // ignore if blocked
+        }
+      }, PING_LEAD_MS + idx * PING_STEP_MS);
+      pingTimersRef.current.push(fireId);
+    }
+
+    const doneId = window.setTimeout(() => {
+      if (pingPhaseRef.current !== 'running') return;
+      const detected = pingDetectedRef.current;
+      if (detected.length >= 2) {
+        const res = computeCalibratedLatency(detected);
+        onUpdateConfig({ latencyOffsetMs: res.offsetMs });
+        onRecordManualCalibrationSamples?.(detected);
+        trackStudioEvent('latency_calibrated', {
+          method: 'acoustic_ping',
+          offset_ms: res.offsetMs,
+          quality: res.quality,
+        });
+        const formatted = detected.map((err, i) => ({ beatIdx: i, errorMs: err }));
+        tapSamplesRef.current = formatted;
+        setTapSamples(formatted);
+        setCalResult(res);
+        calPhaseRef.current = 'done';
+        setCalPhase('done');
+        pingPhaseRef.current = 'done';
+        setPingPhase('done');
+      } else {
+        pingPhaseRef.current = 'failed';
+        setPingPhase('failed');
+      }
+    }, PING_LEAD_MS + (PING_COUNT - 1) * PING_STEP_MS + 380);
+    pingTimersRef.current.push(doneId);
+  };
 
   const startLatencyCalibration = () => {
     cancelCalRaf();
@@ -274,6 +400,11 @@ export function AudioInterfaceModal({
             const res = computeCalibratedLatency(rawList);
             onUpdateConfig({ latencyOffsetMs: res.offsetMs });
             onRecordManualCalibrationSamples?.(rawList);
+            trackStudioEvent('latency_calibrated', {
+              method: 'visual_6tap',
+              offset_ms: res.offsetMs,
+              quality: res.quality,
+            });
             setCalResult(res);
             calPhaseRef.current = 'done';
             setCalPhase('done');
@@ -710,45 +841,120 @@ export function AudioInterfaceModal({
             </div>
           </div>
 
-          {/* Visual 6-Tap Latency Calibration Studio */}
+          {/* Latency Calibration Studio (Visual 6-Tap & Acoustic Loopback Ping) */}
           <div className="rounded-lg border border-border bg-muted/40 p-3 space-y-3">
             <div className="flex flex-wrap items-center justify-between gap-2">
-              <div className="space-y-0.5">
-                <div className="flex items-center gap-2">
-                  <span className="text-xs font-semibold text-foreground">
-                    {tr('Visual 6-Tap Latency Calibration', '시각적 6-탭 레이턴시 측정')}
-                  </span>
-                  {calPhase !== 'idle' && (
-                    <Badge variant="secondary" className="text-[10px] font-mono tabular-nums">
-                      {calPhase === 'count-in'
-                        ? tr(`Count-in ${calCountInRemaining}`, `예비박 ${calCountInRemaining}`)
-                        : calPhase === 'measuring'
-                        ? tr(
-                            `Measuring ${tapSamples.length}/${CAL_TARGET_TAPS}`,
-                            `측정 ${tapSamples.length}/${CAL_TARGET_TAPS}`
-                          )
-                        : tr(
-                            `Calibrated ${calResult && calResult.offsetMs >= 0 ? `+${calResult.offsetMs}` : calResult?.offsetMs ?? 0}ms`,
-                            `보정 완료 ${calResult && calResult.offsetMs >= 0 ? `+${calResult.offsetMs}` : calResult?.offsetMs ?? 0}ms`
-                          )}
-                    </Badge>
-                  )}
-                </div>
-                <div className="text-[11px] text-muted-foreground">
-                  {tr(
-                    'Follow the 4-beat visual count-in, then pluck a muted string when each beat crosses center.',
-                    '4박 예비박 후 중앙선에 박자 마커가 닿는 순간 줄을 6회 튕겨 지연을 정밀 측정합니다.'
-                  )}
+              <div className="flex items-center gap-1 rounded-md border border-border bg-card p-0.5">
+                <button
+                  type="button"
+                  onClick={() => {
+                    stopAcousticPing('idle');
+                    stopCalibration('idle');
+                    setCalMode('visual');
+                  }}
+                  className={`px-2 py-0.5 rounded text-[11px] font-medium transition-colors ${
+                    calMode === 'visual'
+                      ? 'bg-primary text-primary-foreground'
+                      : 'text-muted-foreground hover:text-foreground'
+                  }`}
+                >
+                  {tr('Visual 6-Tap', '시각적 6-탭')}
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    stopCalibration('idle');
+                    stopAcousticPing('idle');
+                    setCalMode('acoustic');
+                  }}
+                  className={`px-2 py-0.5 rounded text-[11px] font-medium transition-colors ${
+                    calMode === 'acoustic'
+                      ? 'bg-primary text-primary-foreground'
+                      : 'text-muted-foreground hover:text-foreground'
+                  }`}
+                >
+                  {tr('Acoustic Ping', '음향 루프백 핑')}
+                </button>
+              </div>
+              {calPhase !== 'idle' && calMode === 'visual' && (
+                <Badge variant="secondary" className="text-[10px] font-mono tabular-nums">
+                  {calPhase === 'count-in'
+                    ? tr(`Count-in ${calCountInRemaining}`, `예비박 ${calCountInRemaining}`)
+                    : calPhase === 'measuring'
+                    ? tr(
+                        `Measuring ${tapSamples.length}/${CAL_TARGET_TAPS}`,
+                        `측정 ${tapSamples.length}/${CAL_TARGET_TAPS}`
+                      )
+                    : tr(
+                        `Calibrated ${calResult && calResult.offsetMs >= 0 ? `+${calResult.offsetMs}` : calResult?.offsetMs ?? 0}ms`,
+                        `보정 완료 ${calResult && calResult.offsetMs >= 0 ? `+${calResult.offsetMs}` : calResult?.offsetMs ?? 0}ms`
+                      )}
+                </Badge>
+              )}
+              {pingPhase !== 'idle' && calMode === 'acoustic' && (
+                <Badge variant="secondary" className="text-[10px] font-mono tabular-nums">
+                  {pingPhase === 'running'
+                    ? tr(`Ping ${pingSentCount}/${PING_COUNT}`, `핑 ${pingSentCount}/${PING_COUNT}`)
+                    : pingPhase === 'done'
+                    ? tr(
+                        `Calibrated ${calResult && calResult.offsetMs >= 0 ? `+${calResult.offsetMs}` : calResult?.offsetMs ?? 0}ms`,
+                        `보정 완료 ${calResult && calResult.offsetMs >= 0 ? `+${calResult.offsetMs}` : calResult?.offsetMs ?? 0}ms`
+                      )
+                    : tr('Signal Weak', '응답 미감지')}
+                </Badge>
+              )}
+            </div>
+
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <div className="space-y-0.5 max-w-[330px]">
+                <span className="text-xs font-semibold text-foreground block">
+                  {calMode === 'visual'
+                    ? tr('Visual 6-Tap Latency Calibration', '시각적 6-탭 레이턴시 측정')
+                    : tr('Acoustic Loopback Ping Calibration', '자동 음향 루프백 핑 측정')}
+                </span>
+                <div className="text-[11px] text-muted-foreground leading-snug">
+                  {calMode === 'visual'
+                    ? tr(
+                        'Follow the 4-beat visual count-in, then pluck a muted string when each beat crosses center.',
+                        '4박 예비박 후 중앙선에 박자 마커가 닿는 순간 줄을 6회 튕겨 지연을 정밀 측정합니다.'
+                      )
+                    : tr(
+                        'Plays 4 crisp audio pings over speakers so open mics/pickups auto-measure hardware latency. Use Visual 6-Tap for headphones.',
+                        '스피커에서 4회 짧은 핑을 재생해 마이크·픽업에 들어오는 하드웨어 왕복 지연을 자동 측정합니다. 헤드폰 환경에서는 시각적 6-탭을 사용하세요.'
+                      )}
                 </div>
               </div>
 
               <div className="flex items-center gap-2">
-                {calPhase === 'count-in' || calPhase === 'measuring' ? (
+                {calMode === 'visual' ? (
+                  calPhase === 'count-in' || calPhase === 'measuring' ? (
+                    <Button
+                      type="button"
+                      size="sm"
+                      variant="outline"
+                      onClick={() => stopCalibration('idle')}
+                    >
+                      {tr('Stop', '중지')}
+                    </Button>
+                  ) : (
+                    <Button
+                      type="button"
+                      size="sm"
+                      variant="outline"
+                      disabled={!isAudioRunning}
+                      onClick={startLatencyCalibration}
+                    >
+                      {calPhase === 'done'
+                        ? tr('Recalibrate', '다시 측정')
+                        : tr('Calibrate', '측정 시작')}
+                    </Button>
+                  )
+                ) : pingPhase === 'running' ? (
                   <Button
                     type="button"
                     size="sm"
                     variant="outline"
-                    onClick={() => stopCalibration('idle')}
+                    onClick={() => stopAcousticPing('idle')}
                   >
                     {tr('Stop', '중지')}
                   </Button>
@@ -758,11 +964,11 @@ export function AudioInterfaceModal({
                     size="sm"
                     variant="outline"
                     disabled={!isAudioRunning}
-                    onClick={startLatencyCalibration}
+                    onClick={startAcousticPing}
                   >
-                    {calPhase === 'done'
-                      ? tr('Recalibrate', '다시 측정')
-                      : tr('Calibrate', '측정 시작')}
+                    {pingPhase === 'done'
+                      ? tr('Ping Again', '다시 측정')
+                      : tr('Start Ping', '자동 핑 시작')}
                   </Button>
                 )}
                 <Button
@@ -770,6 +976,7 @@ export function AudioInterfaceModal({
                   size="sm"
                   onClick={() => {
                     stopCalibration('idle');
+                    stopAcousticPing('idle');
                     onRestartAudio();
                     onOpenChange(false);
                   }}
@@ -778,6 +985,29 @@ export function AudioInterfaceModal({
                 </Button>
               </div>
             </div>
+
+            {calMode === 'acoustic' && pingPhase === 'running' && (
+              <div className="rounded-md border border-border bg-card px-3 py-2 text-xs text-muted-foreground flex items-center justify-between">
+                <span>
+                  {tr(
+                    'Listening for acoustic ping echo... keep room quiet.',
+                    '핑 반사음 감지 중... 스피커 볼륨을 적당히 높여주세요.'
+                  )}
+                </span>
+                <span className="font-mono text-foreground font-semibold">
+                  {pingDetectedCount}/{PING_COUNT}
+                </span>
+              </div>
+            )}
+
+            {calMode === 'acoustic' && pingPhase === 'failed' && (
+              <div className="rounded-md border border-destructive/35 bg-destructive/8 px-3 py-2 text-xs text-foreground">
+                {tr(
+                  'Fewer than 2 pings were heard by your input. If you are using headphones or a direct guitar cable, switch to Visual 6-Tap.',
+                  '입력에서 2회 미만만 감지되었습니다. 헤드폰 또는 유선 직접 연결(Hi-Z) 환경이라면 시각적 6-탭 모드를 사용해 주세요.'
+                )}
+              </div>
+            )}
 
             {!isAudioRunning && (
               <div className="flex items-center justify-between gap-2 rounded-md border border-border bg-card px-3 py-2 text-xs text-muted-foreground">

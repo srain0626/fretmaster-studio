@@ -5,20 +5,23 @@
 All commands run from the project root directory. Always use `;` instead of `&&` in Windows PowerShell 5.1.
 
 ```powershell
-# 1. Production compile & TypeScript check (authoritative verification gate)
+# 1. DSP, Polyphonic FFT & Transport unit tests (`node --test tests/*.test.mjs`)
+npm test
+
+# 2. Zero-emoji & zero-dingbat scan across src/, public/worklets/, tests/, scripts/
+npm run check:emojis
+
+# 3. Production compile & TypeScript check (authoritative verification gate)
 npm run build
 
-# 2. Zero-emoji & zero-dingbat scan across src/ (must print 0)
-node -e "const fs=require('fs'),path=require('path'); let hits=0; function walk(d){for(const f of fs.readdirSync(d)){const p=path.join(d,f);if(fs.statSync(p).isDirectory())walk(p);else if(/\.(ts|tsx|css)$/.test(f)){const t=fs.readFileSync(p,'utf8'); const m=t.match(/[\uD83C-\uDBFF][\uDC00-\uDFFF]|[\u2600-\u27BF]/g); if(m){hits+=m.length;console.log(p,m);}}}} walk('src'); console.log('Total emoji/dingbat hits:',hits);"
-
-# 3. ESLint check
+# 4. ESLint check
 npm run lint
 
-# 4. Development server (default port 3000)
+# 5. Development server (default port 3000)
 npm run dev
 ```
 
-*Note: `turbopack.root` is pinned in `next.config.ts` to prevent Next.js workspace-root lockfile warnings when a parent directory contains another `package-lock.json`.*
+*Note: `.github/workflows/ci.yml` runs `npm ci`, `npm test`, `npm run check:emojis`, and `npm run build` automatically on every push and PR to `main`. `turbopack.root` is pinned in `next.config.ts` to prevent Next.js workspace-root lockfile warnings when a parent directory contains another `package-lock.json`.*
 
 ## Known Gotchas & Fast Diagnostics
 
@@ -36,7 +39,8 @@ npm run dev
 1. **Add or Edit a Lesson:** Read `docs/03-CURRICULUM.md` -> edit `src/data/lessonsPhase*.ts` -> keep unique `id` & valid `ArticulationType` -> run `npm run build`.
 2. **Add an Explanation Video Variant:** Read `docs/05-ANIMATIONS.md` -> extend `HarmonyVariant` or `PostureVariant` union + `resolve*Variant` + `get*AudioCues` + SVG scene subcomponent using `var(--*)` colors -> verify Light/Dark modes & paused overlay spacing.
 3. **Modify Styling or Components:** Read `docs/02-UI-SYSTEM.md` -> edit `src/app/globals.css` tokens or component classes -> verify both `:root` (Light) and `.dark` (Dark) palettes.
-4. **Tune Pitch Detection / Scoring:** Read `docs/04-AUDIO-DSP.md` -> tune YIN thresholds in `public/worklets/guitarPitchWorklet.js` or `JUDGMENT_TIERS` in `src/lib/lowLatencyAudioEngine.ts`.
+4. **Tune Pitch Detection / Scoring:** Read `docs/04-AUDIO-DSP.md` -> tune YIN/FFT thresholds in `public/worklets/guitarPitchWorklet.js` or `JUDGMENT_TIERS` in `src/lib/lowLatencyAudioEngine.ts`, then verify with `npm test`.
+5. **Track Funnel Telemetry:** Use privacy-safe `trackStudioEvent(event, params?)` in `src/lib/analytics.ts` (pushes only non-PII curriculum/audio metrics to GTM `window.dataLayer`).
 
 ## Live Browser QA Checklist (After UI / Animation Changes)
 1. Start `npm run dev` on `http://localhost:3000` (viewport `1440x900`).

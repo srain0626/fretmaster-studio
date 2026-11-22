@@ -31,11 +31,12 @@ export function ChromaticTunerDialog({
   onStartAudio,
 }: ChromaticTunerDialogProps) {
   const { tr } = useLocale();
+  const hasTunerPitch = livePitch.isActive && livePitch.frequency > 0 && livePitch.midiFloat > 0;
   const cents = Math.max(-50, Math.min(50, livePitch.centsOff));
   const needleAngleDeg = (cents / 50) * 58;
-  const isInTune = livePitch.isActive && Math.abs(cents) <= 5;
+  const isInTune = hasTunerPitch && Math.abs(cents) <= 5;
 
-  const nearestOpenString = livePitch.isActive
+  const nearestOpenString = hasTunerPitch
     ? TUNING_OPEN_STRINGS.reduce((best, cur) =>
         Math.abs(cur.midi - livePitch.midiFloat) < Math.abs(best.midi - livePitch.midiFloat)
           ? cur

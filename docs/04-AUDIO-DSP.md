@@ -13,9 +13,10 @@ Mic / Hi-Z Interface
   │     │     • Pre-filter: DC offset removal + 1-pole ~1400 Hz LPF before YIN
   │     │     • Onset detector: RMS ratio (>1.45x) + HF transient delta (>55ms cooldown)
   │     │     • YIN pitch: 65–1450 Hz (threshold 0.18, fallback min < 0.34) + 2*tau subharmonic guard + parabolic interp
+  │     │     • Polyphonic FFT: zero-GC 8192-pt Hann Radix-2 FFT -> 45-bin `noteSpectrum` (MIDI 40..84, 2-bin f1 + 2*f1) & 12-bin `chroma`
   │     │     • Engine stabilization: 5-frame temporal median, 160ms attack settling onset carryover, legato pitch-shift onsets
   │     │     • Noise gate: `noiseGateDb` (default -58 dB)
-  │     └── Fallback: AnalyserNode (fftSize: 4096, same DC+LPF+subharmonic YIN) + requestAnimationFrame
+  │     └── Fallback: AnalyserNode (fftSize: 4096, same DC+LPF+subharmonic YIN + `computePolyphonicFallback`) + requestAnimationFrame
   └── inputMode: 'asio-bridge' ──▶ WebSocket (`ws://127.0.0.1:9420`)
         └── Emits `LivePitchData` directly with `source: 'asio-bridge'`
 ```
@@ -28,7 +29,7 @@ Singleton: `guitarSynthEngine = new ElectricGuitarSynthEngine()`
 - **Signal Chain:** Dual/shaped oscillators + tubesaturation WaveShaper (`createTubeSaturationCurve`) -> Lowpass CabFilter (`4200 Hz`, `Q=0.8`) -> MasterGain (`0.72`).
 - **Amp Presets:** `'clean'`, `'crunch'`, `'lead'`.
 - **Scheduler:** `setInterval(runScheduler, 25)` lookahead scheduler managing bar loops (`loopRangeBars`), `countInBeats` (`onCountInUpdate` pre-roll), hybrid wall-clock fallback when `AudioContext` stays suspended, continuous `getExactBeatAt()` sub-millisecond timing, optional `+5 BPM` per loop (`autoSpeedUpBpm`), `enableGuideGuitar`, `enableBackingChords`, `enableDrumsAndBass`, `enableMetronome`.
-- **One-Shot API:** `guitarSynthEngine.playSingleGuitarNote(string, fret, ampPreset = 'crunch', durationSec = 0.55, bendCents = 0, technique = 'normal', scheduledTime?)`. Used by Fretboard clicks, Lesson Guide animations, and Ear Copy demos.
+- **One-Shot API:** `guitarSynthEngine.playSingleGuitarNote(string, fret, ampPreset = 'crunch', durationSec = 0.55, bendCents = 0, technique = 'normal', scheduledTime?)` + `playCalibrationPing(scheduledTime?)` (`1800 Hz` loopback click). Used by Fretboard clicks, Lesson Guide animations, Ear Copy demos, and Acoustic Latency Calibration.
 - **Exact `ArticulationType` values (`types/guitar.ts`):** `'normal' | 'hammer' | 'pull' | 'slide-up' | 'slide-down' | 'bend-half' | 'bend-full' | 'bend-15' | 'prebend-release' | 'vibrato' | 'palm-mute' | 'double-stop' | 'chord' | 'tap'`. *(Never pass `'bend'` or `'slide'` or `'hammer-on'`.)*
 
 ## 4-Stage `JUDGMENT_TIERS` (`src/lib/lowLatencyAudioEngine.ts`)
@@ -42,7 +43,8 @@ Singleton: `guitarSynthEngine = new ElectricGuitarSynthEngine()`
 
 ## Evaluators & Music Theory Utilities
 
-- **`evaluateNoteHit(...)` (`lowLatencyAudioEngine.ts`):** Scores note pitch accuracy + timing delta (offset-compensated by `config.latencyOffsetMs`) + peak bend progress against active `JUDGMENT_TIERS` spec (including octave-equivalent chord voicing tolerance) -> returns `NoteEvaluation`.
+- **`evaluatePolyphonicChord(chordNotes, noteSpectrum, chroma, tier)` (`lowLatencyAudioEngine.ts`):** Verifies power chords & open triads against `45-bin` `noteSpectrum` (`MIDI 40..84`), distinguishes Major vs Minor 3rds (`wrongThirdDetected`), and detects unmuted open bass bleed (`unmutedStringWarning`).
+- **`evaluateNoteHit(..., livePoly?)` (`lowLatencyAudioEngine.ts`):** Scores mono pitch accuracy or polyphonic chord strums (`evaluatePolyphonicChord` when `chordNotes` are present and `noteSpectrum` is populated) + timing delta (offset-compensated by `config.latencyOffsetMs`) + peak bend progress against active `JUDGMENT_TIERS` -> returns `NoteEvaluation`.
 - **`resolveFretPositionForContext(midi, context)` (`src/lib/musicTheory.ts`):** Context-aware unison resolver locking onto matching active targets, prioritizing `lessonNotes`, `scaleOverlay`, `focusFretRange`, open-string fret 0 ergonomics, and `visibleRange`, and exposing secondary `unisons[]` across strings.
 - **`evaluateImprovisation(events, scaleOverlay, chordProgression)`:** Computes `harmonicFit`, `chordToneResolution`, `rhythmBreathing`, `expressiveArticulation`, and `overallScore` for Phase IV Jam Lab.
 - **`mapHummedPitchesToFretboard(midiSequence, scaleOverlay, focusRange, keyCenterRootPc)`:** Maps vocal/hummed MIDI pitches onto optimal ergonomic fret positions (`HummedNoteMapping[]`).
@@ -51,4 +53,4 @@ Singleton: `guitarSynthEngine = new ElectricGuitarSynthEngine()`
 ## Audio UI Components (`src/components/audio/`)
 - `LivePitchTelemetryBar.tsx`: Top-center live detected note, cent deviation, compact peak dBFS / clip indicator, triggers for Tuner & Audio Setup modals.
 - `ChromaticTunerDialog.tsx`: Precision `±50c` strobe/needle tuner with reference tone triggers (`6E..1e`).
-- `AudioInterfaceModal.tsx`: Input device selector, `'worklet' | 'asio-bridge'` toggle, channel route (`ch1`/`ch2`/`mono`), real-time Peak/RMS/Clip meter & software input trim (`-18..+18 dB`), `-70..-20 dB` noise gate, 60fps Visual 6-Tap Latency Calibration (`computeCalibratedLatency`, `-50..+200 ms`), and progressive per-bar adaptive auto-calibration (`updateAdaptiveLatencyProfile`).
+- `AudioInterfaceModal.tsx`: Input device selector, `'worklet' | 'asio-bridge'` toggle, channel route (`ch1`/`ch2`/`mono`), real-time Peak/RMS/Clip meter & software input trim (`-18..+18 dB`), `-70..-20 dB` noise gate, `'visual' | 'acoustic'` latency calibration (60fps 6-Tap Visual OR 1-click 4-Ping Acoustic Loopback Ping -> `computeCalibratedLatency`, `-50..+200 ms`), and progressive per-bar adaptive auto-calibration (`updateAdaptiveLatencyProfile`).

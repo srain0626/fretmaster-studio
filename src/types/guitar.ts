@@ -146,6 +146,8 @@ export interface LivePitchData {
   isOnset: boolean;
   isActive: boolean;
   timestampMs: number;
+  chroma?: number[]; // 12-bin pitch-class energy (0..1)
+  noteSpectrum?: number[]; // 45-bin energy (0..100) for MIDI 40..84
   detectedString?: GuitarString;
   detectedFret?: number;
   source: 'worklet' | 'analyser' | 'asio-bridge' | 'simulated';
@@ -158,6 +160,8 @@ export interface NoteEvaluation {
   centsError: number; // negative = flat, positive = sharp
   bendAchievedCents?: number;
   detectedMidi?: number;
+  chordMatchRatio?: number;
+  unmutedStringWarning?: boolean;
 }
 
 export interface SessionTelemetry {
