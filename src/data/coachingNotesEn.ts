@@ -1,10 +1,12 @@
 export const COACHING_NOTES_EN: Record<string, string> = {
   '가장 굵은 6번 줄 E2 다운 피킹': 'Down-pick the thickest 6th string (E2)',
   '5번 줄 A2 업 피킹 — 손목을 부드럽게 끌어올리세요': 'Up-pick the 5th string (A2) — glide your wrist smoothly upward',
+  '이전 6번 줄 울림을 뮤트하며 5번 줄 A2 업 피킹': 'Mute the ringing 6th string, then up-pick the 5th string (A2)',
   '4번 줄 D3 다운 피킹': 'Down-pick the 4th string (D3)',
   '3번 줄 G3 업 피킹': 'Up-pick the 3rd string (G3)',
   '2번 줄 B3 다운 피킹 (3번 줄과 장3도 간격)': 'Down-pick the 2nd string (B3, Major 3rd above the 3rd string)',
   '가장 얇은 1번 줄 E4 업 피킹 (6번 줄의 2옥타브 위)': 'Up-pick the thinnest 1st string (E4, two octaves above string 6)',
+  '저음현 잔향을 반드시 뮤트하며 가장 얇은 1번 줄 E4 업 피킹': 'Mute low-string sustain cleanly, then up-pick the 1st string (E4)',
   '6번 줄 E2로 안정감 있게 해결': 'Resolve firmly back onto open 6th string (E2)',
   '1번 줄 개방현 E4': 'Open 1st string E4',
   '1번 검지로 1프렛(F4) — E와 F는 반음(1프렛) 차이!': 'Index finger on Fret 1 (F4) — E to F is a natural half-step (1 fret)!',

@@ -107,12 +107,13 @@ export const LESSONS_EN: Record<string, LessonTranslation> = {
       thumbPosition:
         'Drape left fingers lightly across strings to mute; rest right palm edge gently near the bridge saddles.',
       leftHandTip:
-        'Keep the left hand relaxed without pressing frets; lightly touch the previously rung string as your pick moves on.',
+        'Unmuted open strings overlap and make pitch recognition and passing the exam difficult. Lightly touch the previously rung string with your left fingers or right palm edge as you move to the next string.',
       rightHandTip:
         'Tilt the pick edge ~45 degrees to the string so Down (D) and Up (U) strokes glide cleanly like a pendulum.',
-      commonMistake: 'Swinging the whole elbow up and down, digging the pick too deep into the string',
+      commonMistake:
+        'Leaving the previous open string (especially thick 6th/5th bass strings) ringing while picking the next string, or digging the pick too deep',
       fixAction:
-        'Rest your pinky side lightly on the guitar body and rotate strictly from the wrist, slicing only 2-3mm deep.',
+        'Always damp the previous string with your left fingers or right palm edge before crossing strings, and slice only 2-3mm deep from the wrist.',
     },
   },
   'm1-2': {

@@ -183,6 +183,23 @@ export function LessonGuideDialog({
                 <span className="text-foreground">{lesson.postureGuide.commonMistake}</span>
                 <span className="text-muted-foreground"> — {lesson.postureGuide.fixAction}</span>
               </div>
+
+              {lesson.id === 'm1-1' && (
+                <div className="rounded-lg border border-amber-500/35 bg-amber-500/8 px-3.5 py-2.5 text-xs leading-relaxed">
+                  <div className="font-semibold text-foreground mb-1">
+                    {tr(
+                      'Exam Passing Tip · Mute Previous Open Strings',
+                      '테스트 통과 핵심 · 이전 개방현 뮤트 필수'
+                    )}
+                  </div>
+                  <p className="text-muted-foreground">
+                    {tr(
+                      'Open strings sustain loudly on electric guitar. If you do not mute the previous string before picking the next one, residual low-string resonance overlaps the new pitch and makes passing the test difficult. Lightly damp the previous string with your left fingers or right palm edge on every string change.',
+                      '개방현은 울림이 강하고 길게 남아, 다음 줄을 치기 전에 이전 줄을 뮤트하지 않으면 저음 잔향이 겹쳐 피치 인식과 테스트 통과가 어렵습니다. 줄을 옮길 때마다 왼손가락이나 오른손 손날로 이전 줄 울림을 꼭 멈춰주세요.'
+                    )}
+                  </p>
+                </div>
+              )}
             </section>
           )}
         </div>

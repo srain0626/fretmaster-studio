@@ -2341,6 +2341,17 @@ function AuthenticatedStudioWorkspace({
             <p className="text-xs leading-relaxed text-foreground/90">
               {currentFocusSentence}
             </p>
+            {lesson.id === 'm1-1' && (
+              <div className="rounded-lg border border-amber-500/35 bg-amber-500/8 px-2.5 py-2 text-[11px] leading-relaxed text-foreground/90">
+                <span className="font-semibold text-foreground">
+                  {tr('Mute Required:', '개방현 뮤트 필수:')}
+                </span>
+                {tr(
+                  ' Damp the previous open string before picking the next — unmuted resonance makes passing the test difficult.',
+                  ' 이전 개방현을 뮤트하지 않으면 잔향이 겹쳐 테스트 통과가 어렵습니다. 다음 줄을 치기 직전 왼손이나 오른손 손날로 이전 줄 울림을 멈춰주세요.'
+                )}
+              </div>
+            )}
           </div>
 
           {/* BOTTOM RIGHT: Lesson Guide Entry Card */}
