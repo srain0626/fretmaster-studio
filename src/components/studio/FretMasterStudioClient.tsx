@@ -557,28 +557,6 @@ function AuthenticatedStudioWorkspace({
     }
   };
 
-  const handlePracticeModeChange = (mode: PracticeMode) => {
-    resetSessionState();
-    setPracticeMode(mode);
-    if (mode === 'jam') {
-      setEnableGuideGuitar(false);
-      setEnableDrumsAndBass(true);
-      setEnableBackingChords(true);
-      setBottomTab('lab');
-    } else if (mode === 'earcopy') {
-      setEnableGuideGuitar(true);
-      setLabelMode('interval');
-      setBottomTab('lab');
-    } else if (mode === 'exam') {
-      setEnableGuideGuitar(false);
-      setEnableMetronome(true);
-      setBottomTab('tab');
-    } else {
-      setEnableGuideGuitar(true);
-      setBottomTab('tab');
-    }
-  };
-
   const finalizeExamSession = useCallback(
     (evalMap: Record<string, NoteEvaluation>, finalMaxStreak: number) => {
       const noteList = lesson.notes;
@@ -705,6 +683,104 @@ function AuthenticatedStudioWorkspace({
     [bpm, judgmentTier, lesson, practiceMode, user.id]
   );
 
+  const startTransportForMode = useCallback(
+    (
+      mode: PracticeMode,
+      overrides?: {
+        bpm?: number;
+        loopRangeBars?: [number, number];
+        enableGuideGuitar?: boolean;
+        enableBackingChords?: boolean;
+        enableDrumsAndBass?: boolean;
+        enableMetronome?: boolean;
+      }
+    ) => {
+      const targetBpm = overrides?.bpm ?? bpm;
+      const targetLoopRange = overrides?.loopRangeBars ?? loopRangeBars;
+      const targetGuide = overrides?.enableGuideGuitar ?? enableGuideGuitar;
+      const targetChords = overrides?.enableBackingChords ?? enableBackingChords;
+      const targetDrums = overrides?.enableDrumsAndBass ?? enableDrumsAndBass;
+      const targetMetro = overrides?.enableMetronome ?? enableMetronome;
+
+      setEvaluations({});
+      evaluationsRef.current = {};
+      maxFlowStreakRef.current = 0;
+      lastLoopCountRef.current = 0;
+      lastAcceptedRef.current = null;
+      wrongHoldRef.current = null;
+      setIsPlaying(true);
+
+      guitarSynthEngine.startTransport({
+        bpm: targetBpm,
+        notes: lesson.notes,
+        chordProgression: lesson.chordProgression,
+        totalBars: lesson.totalBars,
+        beatsPerBar: lesson.beatsPerBar,
+        ampPreset,
+        loopRangeBars: targetLoopRange,
+        enableGuideGuitar: targetGuide,
+        enableBackingChords: targetChords,
+        enableDrumsAndBass: targetDrums,
+        enableMetronome: targetMetro,
+        autoSpeedUpBpm: autoSpeedUp && mode === 'loop' ? 5 : 0,
+        onBeatUpdate: (beat, _barIdx, loopIdx, bumpedBpm) => {
+          setCurrentBeat(beat);
+          if (bumpedBpm) setBpm(bumpedBpm);
+
+          let activeIdx = 0;
+          for (let i = 0; i < lesson.notes.length; i++) {
+            if (lesson.notes[i].beatStart <= beat + 0.15) {
+              activeIdx = i;
+            }
+          }
+          setActiveNoteIndex(activeIdx);
+
+          if (loopIdx > lastLoopCountRef.current) {
+            lastLoopCountRef.current = loopIdx;
+            if (mode === 'guide' || mode === 'loop') {
+              setCompletedTasks((prev) => new Set(prev).add(mode));
+            }
+            if (mode === 'loop') {
+              evaluationsRef.current = {};
+              setEvaluations({});
+              setFeedbackBanner({
+                result: 'perfect',
+                title: tr(`Loop #${loopIdx} Complete`, `${loopIdx}회 템포 완주 완료`),
+                detail: bumpedBpm
+                  ? tr(
+                      `Tempo raised to ${bumpedBpm} BPM. Keep playing!`,
+                      `템포가 ${bumpedBpm} BPM으로 올라갔어요. 이어서 연주해 보세요.`
+                    )
+                  : tr(
+                      'Great groove! Keep repeating or take the passing exam.',
+                      '잘했어요! 계속 반복하거나 통과 테스트에 도전해 보세요.'
+                    ),
+              });
+            }
+            if (mode === 'exam') {
+              guitarSynthEngine.stopTransport();
+              setIsPlaying(false);
+              finalizeExamSession(evaluationsRef.current, maxFlowStreakRef.current);
+            }
+          }
+        },
+      });
+    },
+    [
+      ampPreset,
+      autoSpeedUp,
+      bpm,
+      enableBackingChords,
+      enableDrumsAndBass,
+      enableGuideGuitar,
+      enableMetronome,
+      finalizeExamSession,
+      lesson,
+      loopRangeBars,
+      tr,
+    ]
+  );
+
   const toggleTransport = useCallback(() => {
     if (isPlaying) {
       guitarSynthEngine.stopTransport();
@@ -728,68 +804,74 @@ function AuthenticatedStudioWorkspace({
       return;
     }
 
-    setEvaluations({});
-    evaluationsRef.current = {};
-    maxFlowStreakRef.current = 0;
-    lastLoopCountRef.current = 0;
-    lastAcceptedRef.current = null;
-    wrongHoldRef.current = null;
-    setIsPlaying(true);
-
-    guitarSynthEngine.startTransport({
-      bpm,
-      notes: lesson.notes,
-      chordProgression: lesson.chordProgression,
-      totalBars: lesson.totalBars,
-      beatsPerBar: lesson.beatsPerBar,
-      ampPreset,
-      loopRangeBars,
-      enableGuideGuitar,
-      enableBackingChords,
-      enableDrumsAndBass,
-      enableMetronome,
-      autoSpeedUpBpm: autoSpeedUp && practiceMode === 'loop' ? 5 : 0,
-      onBeatUpdate: (beat, _barIdx, loopIdx, bumpedBpm) => {
-        setCurrentBeat(beat);
-        if (bumpedBpm) setBpm(bumpedBpm);
-
-        let activeIdx = 0;
-        for (let i = 0; i < lesson.notes.length; i++) {
-          if (lesson.notes[i].beatStart <= beat + 0.15) {
-            activeIdx = i;
-          }
-        }
-        setActiveNoteIndex(activeIdx);
-
-        if (loopIdx > lastLoopCountRef.current) {
-          lastLoopCountRef.current = loopIdx;
-          if (practiceMode === 'guide' || practiceMode === 'loop') {
-            setCompletedTasks((prev) => new Set(prev).add(practiceMode));
-          }
-          if (practiceMode === 'exam') {
-            guitarSynthEngine.stopTransport();
-            setIsPlaying(false);
-            finalizeExamSession(evaluationsRef.current, maxFlowStreakRef.current);
-          }
-        }
-      },
-    });
+    startTransportForMode(practiceMode);
   }, [
     activeNoteIndex,
     ampPreset,
-    autoSpeedUp,
     bpm,
-    enableBackingChords,
-    enableDrumsAndBass,
-    enableGuideGuitar,
-    enableMetronome,
-    finalizeExamSession,
     isPlaying,
-    lesson,
-    loopRangeBars,
+    lesson.notes,
     practiceMode,
+    startTransportForMode,
     tr,
   ]);
+
+  const handlePracticeModeChange = useCallback(
+    (mode: PracticeMode) => {
+      resetSessionState();
+      setPracticeMode(mode);
+
+      const nextGuide = mode !== 'jam' && mode !== 'exam';
+      const nextDrums = mode === 'jam' ? true : enableDrumsAndBass;
+      const nextChords = mode === 'jam' ? true : enableBackingChords;
+      const nextMetro = mode === 'exam' ? true : enableMetronome;
+
+      if (mode === 'jam') {
+        setEnableGuideGuitar(false);
+        setEnableDrumsAndBass(true);
+        setEnableBackingChords(true);
+        setBottomTab('lab');
+      } else if (mode === 'earcopy') {
+        setEnableGuideGuitar(true);
+        setLabelMode('interval');
+        setBottomTab('lab');
+      } else if (mode === 'exam') {
+        setEnableGuideGuitar(false);
+        setEnableMetronome(true);
+        setBottomTab('tab');
+      } else {
+        setEnableGuideGuitar(true);
+        setBottomTab('tab');
+      }
+
+      if (mode === 'loop' || mode === 'guide') {
+        startTransportForMode(mode, {
+          enableGuideGuitar: nextGuide,
+          enableBackingChords: nextChords,
+          enableDrumsAndBass: nextDrums,
+          enableMetronome: nextMetro,
+        });
+        if (mode === 'loop') {
+          setFeedbackBanner({
+            result: 'good',
+            title: tr('Playing in Tempo', '템포 맞춰 연주 중'),
+            detail: tr(
+              'Follow the moving playhead and play along with the beat.',
+              '움직이는 플레이헤드와 메트로놈에 맞춰 연주해 보세요.'
+            ),
+          });
+        }
+      }
+    },
+    [
+      enableBackingChords,
+      enableDrumsAndBass,
+      enableMetronome,
+      resetSessionState,
+      startTransportForMode,
+      tr,
+    ]
+  );
 
   useEffect(() => {
     if (!isPlaying) return;
@@ -1454,9 +1536,15 @@ function AuthenticatedStudioWorkspace({
       };
     }
     if (practiceMode === 'loop') {
+      if (completedTasks.has('loop') && !isPlaying) {
+        return {
+          label: tr('Take Passing Exam', '통과 테스트 보기'),
+          onClick: () => handlePracticeModeChange('exam'),
+        };
+      }
       return {
-        label: tr('Take Passing Exam', '통과 테스트 보기'),
-        onClick: () => handlePracticeModeChange('exam'),
+        label: isPlaying ? tr('Stop Tempo Loop', '템포 연습 중지') : tr('Start Tempo Loop', '템포 맞춰 시작'),
+        onClick: toggleTransport,
       };
     }
     if (practiceMode === 'exam') {
@@ -1469,7 +1557,7 @@ function AuthenticatedStudioWorkspace({
       label: isPlaying ? tr('Stop', '정지') : tr('Play Backing', '반주 재생'),
       onClick: toggleTransport,
     };
-  }, [isPlaying, lesson.supportsEarCopy, lesson.supportsJam, practiceMode, toggleTransport, tr]);
+  }, [completedTasks, handlePracticeModeChange, isPlaying, lesson.supportsEarCopy, lesson.supportsJam, practiceMode, toggleTransport, tr]);
 
   // Concise 1-line guidance for current note
   const activeNote = lesson.notes[activeNoteIndex];
@@ -2069,9 +2157,15 @@ function AuthenticatedStudioWorkspace({
           setPracticeMode('exam');
         }}
         onLoopWeakBar={(barIdx) => {
+          const slowBpm = Math.max(lesson.minBpm, Math.round(bpm * 0.8));
+          setReportOpen(false);
           setPracticeMode('loop');
           setLoopRangeBars([barIdx, barIdx]);
-          setBpm(Math.max(lesson.minBpm, Math.round(bpm * 0.8)));
+          setBpm(slowBpm);
+          startTransportForMode('loop', {
+            loopRangeBars: [barIdx, barIdx],
+            bpm: slowBpm,
+          });
         }}
         onNextLesson={() => {
           if (nextLesson) handleSelectLesson(nextLesson);

@@ -45,6 +45,13 @@ export class ElectricGuitarSynthEngine {
   private lastBeatFloor = -1;
   private triggeredNotes = new Set<string>();
   private triggeredChords = new Set<string>();
+  private transportSessionId = 0;
+  private pendingTimers = new Set<number>();
+  private lastAudioTime = 0;
+  private lastAudioAdvanceWallMs = 0;
+  private lastResumeAttemptMs = 0;
+  private usingWallClock = false;
+  private pendingBpmBump: number | undefined = undefined;
 
   private currentOptions: TransportOptions | null = null;
 
@@ -71,7 +78,7 @@ export class ElectricGuitarSynthEngine {
     }
 
     if (this.ctx.state === 'suspended') {
-      void this.ctx.resume();
+      void this.ctx.resume().catch(() => {});
     }
     return this.ctx;
   }
@@ -318,6 +325,7 @@ export class ElectricGuitarSynthEngine {
 
   public startTransport(options: TransportOptions, startFromLoopStart = true) {
     this.stopTransport();
+    const sessionId = ++this.transportSessionId;
     const ctx = this.ensureContext();
     this.currentOptions = { ...options };
     this.isPlaying = true;
@@ -330,19 +338,67 @@ export class ElectricGuitarSynthEngine {
       : 0;
     this.currentBeat = startBeat;
     this.lastBeatFloor = startBeat - 1;
-    this.nextBeatTime = ctx.currentTime + 0.06;
+
+    const initWall = performance.now();
+    this.lastAudioTime = ctx.currentTime;
+    this.lastAudioAdvanceWallMs = initWall;
+    this.lastResumeAttemptMs = initWall;
+    this.usingWallClock = ctx.state !== 'running';
+    this.pendingBpmBump = undefined;
+    this.nextBeatTime = ctx.currentTime + 0.05;
 
     const scheduleStepBeats = 0.25; // 16th-note resolution
     const lookaheadSec = 0.12;
 
+    const scheduleUiCallback = (delayMs: number, fn: () => void) => {
+      const timerId = globalThis.setTimeout(() => {
+        this.pendingTimers.delete(timerId);
+        if (!this.isPlaying || this.transportSessionId !== sessionId) return;
+        fn();
+      }, delayMs) as unknown as number;
+      this.pendingTimers.add(timerId);
+    };
+
     const runScheduler = () => {
-      if (!this.isPlaying || !this.currentOptions || !this.ctx) return;
+      if (!this.isPlaying || this.transportSessionId !== sessionId || !this.currentOptions || !this.ctx) {
+        return;
+      }
       const opts = this.currentOptions;
+      const nowWallMs = performance.now();
+
+      if (this.ctx.state === 'suspended' && nowWallMs - this.lastResumeAttemptMs > 500) {
+        void this.ctx.resume().catch(() => {});
+        this.lastResumeAttemptMs = nowWallMs;
+      }
+
+      if (this.ctx.state === 'running' && this.ctx.currentTime > this.lastAudioTime + 0.0005) {
+        if (this.usingWallClock) {
+          const virtualNow = this.lastAudioTime + (nowWallMs - this.lastAudioAdvanceWallMs) / 1000;
+          const remaining = this.nextBeatTime - virtualNow;
+          this.nextBeatTime = this.ctx.currentTime + Math.max(0.01, Math.min(0.3, remaining));
+        }
+        this.usingWallClock = false;
+        this.lastAudioTime = this.ctx.currentTime;
+        this.lastAudioAdvanceWallMs = nowWallMs;
+      } else if (nowWallMs - this.lastAudioAdvanceWallMs > 180) {
+        this.usingWallClock = true;
+      }
+
+      const nowSec = this.usingWallClock
+        ? this.lastAudioTime + (nowWallMs - this.lastAudioAdvanceWallMs) / 1000
+        : this.ctx.currentTime;
+      const audioActive = !this.usingWallClock && this.ctx.state === 'running';
+
+      // Guard against catch-up burst after background tab throttling
+      if (this.nextBeatTime < nowSec - 0.5) {
+        this.nextBeatTime = nowSec + 0.02;
+      }
+
       const secPerBeat = 60 / opts.bpm;
       const loopStartBeat = opts.loopRangeBars[0] * opts.beatsPerBar;
       const loopEndBeat = (opts.loopRangeBars[1] + 1) * opts.beatsPerBar;
 
-      while (this.nextBeatTime < this.ctx.currentTime + lookaheadSec) {
+      while (this.nextBeatTime < nowSec + lookaheadSec) {
         const beatInBar = this.currentBeat % opts.beatsPerBar;
         const barIdx = Math.floor(this.currentBeat / opts.beatsPerBar);
 
@@ -351,10 +407,10 @@ export class ElectricGuitarSynthEngine {
           const intBeat = Math.round(this.currentBeat);
           if (intBeat !== this.lastBeatFloor) {
             this.lastBeatFloor = intBeat;
-            if (opts.enableMetronome) {
+            if (audioActive && opts.enableMetronome) {
               this.playMetronomeClick(intBeat % opts.beatsPerBar === 0, this.nextBeatTime);
             }
-            if (opts.enableDrumsAndBass) {
+            if (audioActive && opts.enableDrumsAndBass) {
               const bMod = intBeat % opts.beatsPerBar;
               if (bMod === 0 || bMod === 2) {
                 this.playDrumHit('kick', this.nextBeatTime);
@@ -369,7 +425,7 @@ export class ElectricGuitarSynthEngine {
                 this.playBassNote(chord.rootMidi - 12, secPerBeat * 1.4, this.nextBeatTime);
               }
             }
-            if (opts.enableBackingChords && intBeat % opts.beatsPerBar === 0) {
+            if (audioActive && opts.enableBackingChords && intBeat % opts.beatsPerBar === 0) {
               const chord = opts.chordProgression[barIdx % opts.chordProgression.length];
               const chordKey = `${this.loopCount}-${barIdx}`;
               if (chord && !this.triggeredChords.has(chordKey)) {
@@ -378,11 +434,12 @@ export class ElectricGuitarSynthEngine {
               }
             }
           }
-        } else if (opts.enableDrumsAndBass && Math.abs((beatInBar % 0.5) - 0) < 0.001) {
+        } else if (audioActive && opts.enableDrumsAndBass && Math.abs((beatInBar % 0.5) - 0) < 0.001) {
           this.playDrumHit('hat', this.nextBeatTime);
         }
 
         // Trigger Notes in current 16th window
+        const baseDelayMs = Math.max(0, (this.nextBeatTime - nowSec) * 1000);
         for (const note of opts.notes) {
           const nKey = `${this.loopCount}-${note.id}`;
           if (
@@ -392,14 +449,14 @@ export class ElectricGuitarSynthEngine {
           ) {
             this.triggeredNotes.add(nKey);
             const offsetSec = Math.max(0, (note.beatStart - this.currentBeat) * secPerBeat);
-            if (opts.enableGuideGuitar) {
+            if (audioActive && opts.enableGuideGuitar) {
               this.playNoteEvent(note, opts.ampPreset, secPerBeat, this.nextBeatTime + offsetSec);
             }
             if (opts.onNoteTrigger) {
               const triggerCopy = note;
-              setTimeout(() => {
-                if (this.isPlaying) opts.onNoteTrigger?.(triggerCopy);
-              }, Math.max(0, (this.nextBeatTime + offsetSec - this.ctx.currentTime) * 1000));
+              scheduleUiCallback(baseDelayMs + offsetSec * 1000, () => {
+                opts.onNoteTrigger?.(triggerCopy);
+              });
             }
           }
         }
@@ -408,12 +465,11 @@ export class ElectricGuitarSynthEngine {
         const beatSnapshot = this.currentBeat;
         const barSnapshot = barIdx;
         const loopSnapshot = this.loopCount;
-        const delayMs = Math.max(0, (this.nextBeatTime - this.ctx.currentTime) * 1000);
-        setTimeout(() => {
-          if (this.isPlaying) {
-            opts.onBeatUpdate?.(beatSnapshot, barSnapshot, loopSnapshot);
-          }
-        }, delayMs);
+        const bpmBumpSnapshot = this.pendingBpmBump;
+        this.pendingBpmBump = undefined;
+        scheduleUiCallback(baseDelayMs, () => {
+          opts.onBeatUpdate?.(beatSnapshot, barSnapshot, loopSnapshot, bpmBumpSnapshot);
+        });
 
         // Advance beat
         this.currentBeat += scheduleStepBeats;
@@ -430,14 +486,15 @@ export class ElectricGuitarSynthEngine {
             const bumped = Math.min(160, opts.bpm + opts.autoSpeedUpBpm);
             if (bumped !== opts.bpm) {
               opts.bpm = bumped;
-              opts.onBeatUpdate?.(loopStartBeat, opts.loopRangeBars[0], this.loopCount, bumped);
+              this.pendingBpmBump = bumped;
             }
           }
         }
       }
     };
 
-    this.schedulerTimer = window.setInterval(runScheduler, 25);
+    runScheduler();
+    this.schedulerTimer = globalThis.setInterval(runScheduler, 25) as unknown as number;
   }
 
   public updateTransportOptions(partial: Partial<TransportOptions>) {
@@ -448,12 +505,19 @@ export class ElectricGuitarSynthEngine {
 
   public stopTransport() {
     this.isPlaying = false;
+    this.transportSessionId++;
     if (this.schedulerTimer !== null) {
-      clearInterval(this.schedulerTimer);
+      globalThis.clearInterval(this.schedulerTimer as unknown as ReturnType<typeof setInterval>);
       this.schedulerTimer = null;
     }
+    this.pendingTimers.forEach((id) => {
+      globalThis.clearTimeout(id as unknown as ReturnType<typeof setTimeout>);
+    });
+    this.pendingTimers.clear();
     this.triggeredNotes.clear();
     this.triggeredChords.clear();
+    this.pendingBpmBump = undefined;
+    this.usingWallClock = false;
   }
 }
 
