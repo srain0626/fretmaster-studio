@@ -4,14 +4,17 @@
 class GuitarPitchProcessor extends AudioWorkletProcessor {
   constructor() {
     super();
-    this.bufferSize = 2048;
+    this.bufferSize = 4096;
     this.hopSize = 256;
     this.ringBuffer = new Float32Array(this.bufferSize);
+    this.rawFrame = new Float32Array(this.bufferSize);
+    this.yinFrame = new Float32Array(this.bufferSize);
     this.yinBuffer = new Float32Array(this.bufferSize / 2);
     this.writeIndex = 0;
     this.samplesSinceAnalysis = 0;
 
-    this.noiseGateDb = -52;
+    // Dynamics & onset state
+    this.noiseGateDb = -58;
     this.prevRms = 0;
     this.prevHighEnergy = 0;
     this.lastOnsetTime = -1;
@@ -60,9 +63,10 @@ class GuitarPitchProcessor extends AudioWorkletProcessor {
   }
 
   analyze() {
-    // Reorder ring buffer into contiguous frame
-    const frame = new Float32Array(this.bufferSize);
+    // Reorder ring buffer into contiguous frame & measure raw energy / pick transient
+    const frame = this.rawFrame;
     let idx = this.writeIndex;
+    let sum = 0;
     let sumSq = 0;
     let highEnergy = 0;
     let prev = 0;
@@ -70,6 +74,7 @@ class GuitarPitchProcessor extends AudioWorkletProcessor {
     for (let i = 0; i < this.bufferSize; i++) {
       const s = this.ringBuffer[idx];
       frame[i] = s;
+      sum += s;
       sumSq += s * s;
       const diff = s - prev;
       highEnergy += diff * diff;
@@ -77,6 +82,7 @@ class GuitarPitchProcessor extends AudioWorkletProcessor {
       idx = (idx + 1) % this.bufferSize;
     }
 
+    const mean = sum / this.bufferSize;
     const rms = Math.sqrt(sumSq / this.bufferSize);
     const rmsDb = rms > 1e-7 ? 20 * Math.log10(rms) : -100;
     const normHighEnergy = Math.sqrt(highEnergy / this.bufferSize);
@@ -89,10 +95,10 @@ class GuitarPitchProcessor extends AudioWorkletProcessor {
 
     let isOnset = false;
     if (
-      rms > gateLinear * 1.4 &&
-      nowSec - this.lastOnsetTime > 0.065 &&
-      ((rmsRatio > 1.75 && rms - this.prevRms > 0.008) ||
-        (highRatio > 2.4 && rms > gateLinear * 2.0))
+      rms > gateLinear * 1.3 &&
+      nowSec - this.lastOnsetTime > 0.055 &&
+      ((rmsRatio > 1.45 && rms - this.prevRms > 0.003) ||
+        (highRatio > 2.0 && rms > gateLinear * 1.5))
     ) {
       isOnset = true;
       this.lastOnsetTime = nowSec;
@@ -112,19 +118,28 @@ class GuitarPitchProcessor extends AudioWorkletProcessor {
       return;
     }
 
-    // YIN Pitch Detection across 70Hz ~ 1300Hz
+    // DC offset removal + 1-pole LPF (~1400 Hz) to suppress pick scratch & aliasing
     const sr = sampleRate;
-    const minTau = Math.max(2, Math.floor(sr / 1320));
-    const maxTau = Math.min(Math.floor(this.bufferSize / 2) - 2, Math.ceil(sr / 68));
+    const yinFrame = this.yinFrame;
+    const lpfAlpha = (2 * Math.PI * 1400) / (sr + 2 * Math.PI * 1400);
+    let lpfState = 0;
+    for (let i = 0; i < this.bufferSize; i++) {
+      lpfState += lpfAlpha * (frame[i] - mean - lpfState);
+      yinFrame[i] = lpfState;
+    }
+
+    // YIN Pitch Detection across 65Hz ~ 1450Hz
+    const minTau = Math.max(2, Math.floor(sr / 1450));
+    const windowLimit = this.bufferSize / 2;
+    const maxTau = Math.min(windowLimit - 2, Math.ceil(sr / 65));
     const yin = this.yinBuffer;
     yin[0] = 1;
 
     let runningSum = 0;
     for (let tau = 1; tau <= maxTau; tau++) {
       let deltaSum = 0;
-      const windowLimit = this.bufferSize / 2;
       for (let j = 0; j < windowLimit; j++) {
-        const d = frame[j] - frame[j + tau];
+        const d = yinFrame[j] - yinFrame[j + tau];
         deltaSum += d * d;
       }
       runningSum += deltaSum;
@@ -132,7 +147,7 @@ class GuitarPitchProcessor extends AudioWorkletProcessor {
     }
 
     // Absolute threshold search
-    const threshold = 0.16;
+    const threshold = 0.18;
     let tauEstimate = -1;
     for (let tau = minTau; tau < maxTau; tau++) {
       if (yin[tau] < threshold) {
@@ -144,7 +159,7 @@ class GuitarPitchProcessor extends AudioWorkletProcessor {
       }
     }
 
-    // Fallback to global minimum if slightly noisy
+    // Fallback to global minimum if slightly noisy / saturated
     if (tauEstimate === -1) {
       let minVal = 1;
       let bestTau = -1;
@@ -154,8 +169,33 @@ class GuitarPitchProcessor extends AudioWorkletProcessor {
           bestTau = tau;
         }
       }
-      if (minVal < 0.28) {
+      if (minVal < 0.34) {
         tauEstimate = bestTau;
+      }
+    }
+
+    // Subharmonic guard: prefer true 2*tau fundamental on wound low strings
+    // only when the candidate dip at tauEstimate is ambiguous (>= 0.05) and 2*tau is decisively cleaner.
+    if (tauEstimate !== -1 && yin[tauEstimate] >= 0.05 && tauEstimate * 2 < maxTau - 3) {
+      const doubleCenter = tauEstimate * 2;
+      let bestDoubleTau = doubleCenter;
+      let bestDoubleVal = yin[doubleCenter];
+      for (let t = Math.max(minTau, doubleCenter - 3); t <= Math.min(maxTau - 1, doubleCenter + 3); t++) {
+        if (yin[t] < bestDoubleVal) {
+          bestDoubleVal = yin[t];
+          bestDoubleTau = t;
+        }
+      }
+      while (bestDoubleTau + 1 < maxTau && yin[bestDoubleTau + 1] < yin[bestDoubleTau]) {
+        bestDoubleTau++;
+        bestDoubleVal = yin[bestDoubleTau];
+      }
+      if (
+        bestDoubleVal < 0.12 &&
+        bestDoubleVal < yin[tauEstimate] * 0.55 &&
+        yin[tauEstimate] - bestDoubleVal >= 0.04
+      ) {
+        tauEstimate = bestDoubleTau;
       }
     }
 
@@ -170,7 +210,7 @@ class GuitarPitchProcessor extends AudioWorkletProcessor {
       return;
     }
 
-    // Parabolic interpolation for sub-sample precision (±1 cent)
+    // Parabolic interpolation for sub-sample precision
     const s0 = yin[tauEstimate - 1];
     const s1 = yin[tauEstimate];
     const s2 = yin[tauEstimate + 1];
@@ -184,7 +224,7 @@ class GuitarPitchProcessor extends AudioWorkletProcessor {
     const clarity = Math.max(0, Math.min(1, 1 - s1));
 
     this.port.postMessage({
-      frequency: frequency >= 68 && frequency <= 1320 ? frequency : 0,
+      frequency: frequency >= 65 && frequency <= 1450 ? frequency : 0,
       rmsDb,
       isOnset,
       clarity,

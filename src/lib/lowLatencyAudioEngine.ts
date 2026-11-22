@@ -50,11 +50,11 @@ export const JUDGMENT_TIERS: Record<JudgmentTier, JudgmentTierSpec> = {
     id: 'relaxed',
     label: '1단계 · RELAXED (입문 적응)',
     shortLabel: 'Relaxed',
-    description: '손가락 번호와 프렛 위치 익히기 · ±110ms / ±45 cents',
+    description: '손가락 번호와 프렛 위치 익히기 · ±110ms / ±55 cents',
     perfectMs: 110,
     goodMs: 220,
     passMs: 300,
-    centsTolerance: 45,
+    centsTolerance: 55,
     bendCompletionRatio: 0.65,
     minPassScore: 70,
   },
@@ -62,11 +62,11 @@ export const JUDGMENT_TIERS: Record<JudgmentTier, JudgmentTierSpec> = {
     id: 'standard',
     label: '2단계 · STANDARD (정규 승급)',
     shortLabel: 'Standard',
-    description: '다음 단계 해금 기준 · ±65ms / ±30 cents',
+    description: '다음 단계 해금 기준 · ±65ms / ±42 cents',
     perfectMs: 65,
     goodMs: 130,
     passMs: 180,
-    centsTolerance: 30,
+    centsTolerance: 42,
     bendCompletionRatio: 0.8,
     minPassScore: 80,
   },
@@ -74,11 +74,11 @@ export const JUDGMENT_TIERS: Record<JudgmentTier, JudgmentTierSpec> = {
     id: 'tight',
     label: '3단계 · TIGHT (엄격 칼박)',
     shortLabel: 'Tight',
-    description: '정확한 피킹 어택 & 벤딩 피치 · ±35ms / ±18 cents',
+    description: '정확한 피킹 어택 & 벤딩 피치 · ±35ms / ±28 cents',
     perfectMs: 35,
     goodMs: 75,
     passMs: 110,
-    centsTolerance: 18,
+    centsTolerance: 28,
     bendCompletionRatio: 0.9,
     minPassScore: 85,
   },
@@ -86,11 +86,11 @@ export const JUDGMENT_TIERS: Record<JudgmentTier, JudgmentTierSpec> = {
     id: 'studio',
     label: '4단계 · STUDIO MASTER (완벽)',
     shortLabel: 'Studio Master',
-    description: '무힌트 블라인드 스튜디오 판정 · ±18ms / ±10 cents',
+    description: '무힌트 블라인드 스튜디오 판정 · ±18ms / ±18 cents',
     perfectMs: 18,
     goodMs: 40,
     passMs: 65,
-    centsTolerance: 10,
+    centsTolerance: 18,
     bendCompletionRatio: 0.94,
     minPassScore: 90,
   },
@@ -153,12 +153,24 @@ export class LowLatencyGuitarAudioEngine {
   private prevFallbackRms = 0;
   private lastFallbackOnsetMs = 0;
 
+  // Pitch smoothing, attack settling, and legato onset tracking
+  private pitchHistory: number[] = [];
+  private candidateJumpMidi: number | null = null;
+  private candidateJumpCount = 0;
+  private pendingOnsetUntilMs = 0;
+  private stableMidiForLegato: number | null = null;
+  private legatoHoldMidi: number | null = null;
+  private legatoHoldCount = 0;
+  private lastSynthOnsetMs = 0;
+  private lastUiEmitMs = 0;
+  private silenceResetCount = 0;
+
   private config: AudioDeviceConfig = {
     deviceId: 'default',
     inputMode: 'worklet',
     channelMode: 'mono',
     directMonitor: true,
-    noiseGateDb: -52,
+    noiseGateDb: -58,
     latencyOffsetMs: 12,
     asioBridgeUrl: 'ws://127.0.0.1:9420',
   };
@@ -331,7 +343,7 @@ export class LowLatencyGuitarAudioEngine {
     } catch {
       // Fallback to AnalyserNode YIN loop
       this.analyser = this.ctx.createAnalyser();
-      this.analyser.fftSize = 2048;
+      this.analyser.fftSize = 4096;
       this.sourceNode.connect(this.analyser);
       this.startFallbackAnalyserLoop();
 
@@ -542,9 +554,9 @@ export class LowLatencyGuitarAudioEngine {
       const nowMs = performance.now();
 
       const isOnset =
-        rms > gateLinear * 1.5 &&
-        rms > this.prevFallbackRms * 1.75 &&
-        nowMs - this.lastFallbackOnsetMs > 70;
+        rms > gateLinear * 1.3 &&
+        nowMs - this.lastFallbackOnsetMs > 55 &&
+        rms > this.prevFallbackRms * 1.45;
       if (isOnset) this.lastFallbackOnsetMs = nowMs;
       this.prevFallbackRms = this.prevFallbackRms * 0.65 + rms * 0.35;
 
@@ -564,9 +576,22 @@ export class LowLatencyGuitarAudioEngine {
   }
 
   private runYinSimple(frame: Float32Array, sr: number): { frequency: number; clarity: number } {
-    const half = Math.floor(frame.length / 2);
-    const minTau = Math.max(2, Math.floor(sr / 1320));
-    const maxTau = Math.min(half - 2, Math.ceil(sr / 68));
+    // DC offset removal + 1-pole LPF (~1400 Hz) to suppress pick click & upper harmonics
+    let mean = 0;
+    for (let i = 0; i < frame.length; i++) mean += frame[i];
+    mean /= frame.length;
+
+    const filtered = new Float32Array(frame.length);
+    const lpfAlpha = (2 * Math.PI * 1400) / (sr + 2 * Math.PI * 1400);
+    let lpfState = 0;
+    for (let i = 0; i < frame.length; i++) {
+      lpfState += lpfAlpha * (frame[i] - mean - lpfState);
+      filtered[i] = lpfState;
+    }
+
+    const half = Math.floor(filtered.length / 2);
+    const minTau = Math.max(2, Math.floor(sr / 1450));
+    const maxTau = Math.min(half - 2, Math.ceil(sr / 65));
     const yin = new Float32Array(maxTau + 1);
     yin[0] = 1;
     let running = 0;
@@ -574,7 +599,7 @@ export class LowLatencyGuitarAudioEngine {
     for (let tau = 1; tau <= maxTau; tau++) {
       let sum = 0;
       for (let j = 0; j < half; j++) {
-        const d = frame[j] - frame[j + tau];
+        const d = filtered[j] - filtered[j + tau];
         sum += d * d;
       }
       running += sum;
@@ -582,20 +607,52 @@ export class LowLatencyGuitarAudioEngine {
     }
 
     let bestTau = -1;
-    let minVal = 1;
     for (let tau = minTau; tau < maxTau; tau++) {
       if (yin[tau] < 0.18) {
         while (tau + 1 < maxTau && yin[tau + 1] < yin[tau]) tau++;
         bestTau = tau;
         break;
       }
-      if (yin[tau] < minVal) {
-        minVal = yin[tau];
-        bestTau = tau;
+    }
+
+    if (bestTau === -1) {
+      let minVal = 1;
+      for (let tau = minTau; tau < maxTau; tau++) {
+        if (yin[tau] < minVal) {
+          minVal = yin[tau];
+          bestTau = tau;
+        }
+      }
+      if (minVal >= 0.34) {
+        bestTau = -1;
       }
     }
 
-    if (bestTau <= minTau || bestTau >= maxTau || yin[bestTau] > 0.28) {
+    // Subharmonic guard against +1 octave jumps on low wound strings
+    if (bestTau !== -1 && yin[bestTau] >= 0.05 && bestTau * 2 < maxTau - 3) {
+      const doubleCenter = bestTau * 2;
+      let bestDoubleTau = doubleCenter;
+      let bestDoubleVal = yin[doubleCenter];
+      for (let t = Math.max(minTau, doubleCenter - 3); t <= Math.min(maxTau - 1, doubleCenter + 3); t++) {
+        if (yin[t] < bestDoubleVal) {
+          bestDoubleVal = yin[t];
+          bestDoubleTau = t;
+        }
+      }
+      while (bestDoubleTau + 1 < maxTau && yin[bestDoubleTau + 1] < yin[bestDoubleTau]) {
+        bestDoubleTau++;
+        bestDoubleVal = yin[bestDoubleTau];
+      }
+      if (
+        bestDoubleVal < 0.12 &&
+        bestDoubleVal < yin[bestTau] * 0.55 &&
+        yin[bestTau] - bestDoubleVal >= 0.04
+      ) {
+        bestTau = bestDoubleTau;
+      }
+    }
+
+    if (bestTau <= minTau || bestTau >= maxTau) {
       return { frequency: 0, clarity: 0 };
     }
 
@@ -604,7 +661,22 @@ export class LowLatencyGuitarAudioEngine {
     const s2 = yin[bestTau + 1];
     const denom = 2 * (2 * s1 - s2 - s0);
     const tau = Math.abs(denom) > 1e-6 ? bestTau + (s2 - s0) / denom : bestTau;
-    return { frequency: sr / tau, clarity: Math.max(0, 1 - s1) };
+    const frequency = sr / tau;
+    if (frequency < 65 || frequency > 1450) {
+      return { frequency: 0, clarity: 0 };
+    }
+    return { frequency, clarity: Math.max(0, Math.min(1, 1 - s1)) };
+  }
+
+  private resetPitchTrackingState() {
+    this.pitchHistory = [];
+    this.candidateJumpMidi = null;
+    this.candidateJumpCount = 0;
+    this.pendingOnsetUntilMs = 0;
+    this.stableMidiForLegato = null;
+    this.legatoHoldMidi = null;
+    this.legatoHoldCount = 0;
+    this.silenceResetCount = 0;
   }
 
   private handleRawAnalysis(
@@ -615,33 +687,137 @@ export class LowLatencyGuitarAudioEngine {
     source: LivePitchData['source']
   ) {
     const nowMs = performance.now() - this.config.latencyOffsetMs;
-    if (frequency <= 0 || rmsDb < this.config.noiseGateDb) {
-      this.emit({
-        ...EMPTY_PITCH,
-        rmsDb,
-        isOnset: false,
-        isActive: false,
-        timestampMs: nowMs,
-        source,
-      });
+
+    // Preserve a pick attack onset even if the initial attack transient is unpitched (freq=0)
+    if (isOnset && rmsDb >= this.config.noiseGateDb) {
+      this.pendingOnsetUntilMs = nowMs + 160;
+      this.pitchHistory = [];
+      this.candidateJumpMidi = null;
+      this.candidateJumpCount = 0;
+      this.legatoHoldMidi = null;
+      this.legatoHoldCount = 0;
+    }
+
+    if (frequency <= 0 || rmsDb < this.config.noiseGateDb || clarity < 0.45) {
+      this.silenceResetCount++;
+      if (rmsDb < this.config.noiseGateDb && this.silenceResetCount >= 3) {
+        this.resetPitchTrackingState();
+      }
+      if (this.lastPitch.isActive || nowMs - this.lastUiEmitMs >= 45) {
+        this.lastUiEmitMs = nowMs;
+        this.emit({
+          ...EMPTY_PITCH,
+          rmsDb,
+          isOnset: false,
+          isActive: false,
+          timestampMs: nowMs,
+          source,
+        });
+      }
       return;
     }
 
-    const midiFloat = freqToMidiFloat(frequency);
+    this.silenceResetCount = 0;
+    const rawMidiFloat = freqToMidiFloat(frequency);
+
+    // Temporal median smoothing with fast 2-frame jump acceptance
+    let jumpAccepted = false;
+    if (this.pitchHistory.length > 0) {
+      const sortedPrev = [...this.pitchHistory].sort((a, b) => a - b);
+      const prevMedian = sortedPrev[Math.floor(sortedPrev.length / 2)];
+      if (Math.abs(rawMidiFloat - prevMedian) >= 0.8) {
+        if (this.candidateJumpMidi !== null && Math.abs(rawMidiFloat - this.candidateJumpMidi) < 0.5) {
+          this.candidateJumpCount++;
+        } else {
+          this.candidateJumpMidi = rawMidiFloat;
+          this.candidateJumpCount = 1;
+        }
+        if (this.candidateJumpCount >= 2) {
+          this.pitchHistory = [rawMidiFloat];
+          this.candidateJumpMidi = null;
+          this.candidateJumpCount = 0;
+          jumpAccepted = true;
+        }
+      } else {
+        this.candidateJumpMidi = null;
+        this.candidateJumpCount = 0;
+        this.pitchHistory.push(rawMidiFloat);
+        if (this.pitchHistory.length > 5) {
+          this.pitchHistory.shift();
+        }
+      }
+    } else {
+      this.pitchHistory.push(rawMidiFloat);
+    }
+
+    const sortedHistory = [...this.pitchHistory].sort((a, b) => a - b);
+    const midiFloat = sortedHistory[Math.floor(sortedHistory.length / 2)];
+    const smoothedFrequency = 440 * Math.pow(2, (midiFloat - 69) / 12);
     const nearestMidi = Math.round(midiFloat);
     const centsOff = Math.round((midiFloat - nearestMidi) * 100);
     const noteName = midiToNoteName(nearestMidi);
-    const guess = findBestFretForMidi(nearestMidi, [0, 15]);
+    const guess = findBestFretForMidi(nearestMidi, [0, 12]);
+
+    // Post-onset settling carryover + legato / soft fingerpicking pitch-shift onset
+    let effectiveOnset = false;
+    if (clarity >= 0.6) {
+      if (isOnset || nowMs <= this.pendingOnsetUntilMs) {
+        effectiveOnset = true;
+        this.pendingOnsetUntilMs = 0;
+        this.lastSynthOnsetMs = nowMs;
+        this.stableMidiForLegato = nearestMidi;
+        this.legatoHoldMidi = null;
+        this.legatoHoldCount = 0;
+      } else if (this.stableMidiForLegato === null || this.stableMidiForLegato !== nearestMidi) {
+        if (jumpAccepted) {
+          // Already confirmed 2 consecutive steady frames at the new note
+          if (nowMs - this.lastSynthOnsetMs > 90) {
+            effectiveOnset = true;
+            this.lastSynthOnsetMs = nowMs;
+            this.stableMidiForLegato = nearestMidi;
+          }
+          this.legatoHoldMidi = null;
+          this.legatoHoldCount = 0;
+        } else {
+          if (this.legatoHoldMidi === nearestMidi) {
+            this.legatoHoldCount++;
+          } else {
+            this.legatoHoldMidi = nearestMidi;
+            this.legatoHoldCount = 1;
+          }
+          if (this.legatoHoldCount >= 2 && nowMs - this.lastSynthOnsetMs > 90) {
+            effectiveOnset = true;
+            this.lastSynthOnsetMs = nowMs;
+            this.stableMidiForLegato = nearestMidi;
+            this.legatoHoldMidi = null;
+            this.legatoHoldCount = 0;
+          }
+        }
+      } else {
+        this.legatoHoldMidi = null;
+        this.legatoHoldCount = 0;
+      }
+    }
+
+    // Emit immediately on onset, attack-from-silence, or pitch change; throttle steady sustain to ~45 Hz
+    const shouldEmit =
+      effectiveOnset ||
+      !this.lastPitch.isActive ||
+      this.lastPitch.nearestMidi !== nearestMidi ||
+      nowMs - this.lastUiEmitMs >= 22;
+
+    if (!shouldEmit) return;
+    this.lastUiEmitMs = nowMs;
 
     this.emit({
-      frequency,
+      frequency: smoothedFrequency,
       midiFloat,
       nearestMidi,
       noteName,
       centsOff,
       rmsDb,
       clarity,
-      isOnset,
+      isOnset: effectiveOnset,
       isActive: true,
       timestampMs: nowMs,
       detectedString: guess.string,
@@ -713,6 +889,11 @@ export class LowLatencyGuitarAudioEngine {
       }
       this.ctx = null;
     }
+    this.prevFallbackRms = 0;
+    this.lastFallbackOnsetMs = 0;
+    this.lastSynthOnsetMs = 0;
+    this.lastUiEmitMs = 0;
+    this.resetPitchTrackingState();
     this.telemetry.pipelineMode = 'idle';
     this.telemetry.asioBridgeConnected = false;
     this.emit(EMPTY_PITCH);
@@ -732,7 +913,7 @@ export function evaluateNoteHit(
   const baseTargetMidi = getNoteMidi(targetNote.string, targetNote.fret);
   const expectedBend = targetNote.bendCents ?? 0;
 
-  // Pitch comparison (account for octave tolerance only in Studio? No, exact pitch, unless chord note)
+  // Pitch comparison (chord voicings allow octave-equivalent pitch classes)
   const targetMidiWithBend = baseTargetMidi + expectedBend / 100;
   const rawCentsDiff = Math.round((detectedMidiFloat - baseTargetMidi) * 100);
   const bendTargetCentsDiff = Math.round((detectedMidiFloat - targetMidiWithBend) * 100);
@@ -745,10 +926,12 @@ export function evaluateNoteHit(
       achieved >= minRequired &&
       Math.abs(bendTargetCentsDiff) <= spec.centsTolerance + (expectedBend * (1 - spec.bendCompletionRatio));
   } else if (targetNote.chordNotes && targetNote.chordNotes.length > 0) {
-    // Any note belonging to the chord voicing passes pitch check
+    // Any note belonging to the chord voicing (or its octave-equivalent pitch class) passes pitch check
     pitchOk = targetNote.chordNotes.some((cn) => {
       const m = getNoteMidi(cn.string, cn.fret);
-      return Math.abs((detectedMidiFloat - m) * 100) <= spec.centsTolerance + 15;
+      return [-12, 0, 12].some(
+        (shift) => Math.abs((detectedMidiFloat - (m + shift)) * 100) <= spec.centsTolerance + 18
+      );
     });
   } else {
     pitchOk = Math.abs(rawCentsDiff) <= spec.centsTolerance;

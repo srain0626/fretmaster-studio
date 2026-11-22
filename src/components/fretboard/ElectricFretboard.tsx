@@ -13,10 +13,12 @@ import {
 } from '@/components/ui/select';
 import { STUDIO_SPRING } from '@/components/motion/StudioMotion';
 import {
+  findPossiblePositionsForMidi,
   getFingerColorHex,
   getIntervalLabel,
   getNoteMidi,
   midiToPitchClassName,
+  resolveFretPositionForContext,
 } from '@/lib/musicTheory';
 import { useLocale } from '@/lib/i18n';
 import type {
@@ -147,6 +149,53 @@ export function ElectricFretboard({
     !isEarCopy &&
     (judgmentTier === 'relaxed' || judgmentTier === 'standard');
 
+  const liveFretResolution = useMemo(() => {
+    if (!livePitch.isActive || livePitch.nearestMidi <= 0) return null;
+
+    if (
+      livePitch.source === 'simulated' &&
+      livePitch.detectedString &&
+      livePitch.detectedFret !== undefined
+    ) {
+      const primary = { string: livePitch.detectedString, fret: livePitch.detectedFret };
+      const unisons = findPossiblePositionsForMidi(livePitch.nearestMidi, 22).filter(
+        (c) => !(c.string === primary.string && c.fret === primary.fret)
+      );
+      const targetForCheck = shouldShowActiveTarget ? currentNote : null;
+      const matchedTarget = Boolean(
+        targetForCheck &&
+          (getNoteMidi(targetForCheck.string, targetForCheck.fret) === livePitch.nearestMidi ||
+            targetForCheck.chordNotes?.some(
+              (cn) => getNoteMidi(cn.string, cn.fret) === livePitch.nearestMidi
+            ))
+      );
+      return { primary, unisons, matchedTarget };
+    }
+
+    return resolveFretPositionForContext(livePitch.nearestMidi, {
+      targetNote: shouldShowActiveTarget ? currentNote : null,
+      lessonNotes: isBlindExam || isEarCopy ? undefined : notes,
+      scaleOverlay: shouldShowScale ? scaleOverlay : undefined,
+      focusFretRange,
+      visibleRange,
+    });
+  }, [
+    livePitch.isActive,
+    livePitch.nearestMidi,
+    livePitch.source,
+    livePitch.detectedString,
+    livePitch.detectedFret,
+    shouldShowActiveTarget,
+    currentNote,
+    isBlindExam,
+    isEarCopy,
+    notes,
+    shouldShowScale,
+    scaleOverlay,
+    focusFretRange,
+    visibleRange,
+  ]);
+
   const fretsToDraw = useMemo(() => {
     const arr: number[] = [];
     for (let f = visibleRange[0]; f <= visibleRange[1]; f++) arr.push(f);
@@ -226,6 +275,28 @@ export function ElectricFretboard({
             <span className="h-2.5 w-2.5 rounded-full bg-[#B56357]" /> {tr('4 Pinky', '4 소지')}
           </span>
         </div>
+
+        {/* Live Pitch Resolution Readout */}
+        {livePitch.isActive && liveFretResolution && (
+          <div
+            className={`inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full border text-[11px] font-mono tabular-nums ${
+              liveFretResolution.matchedTarget
+                ? 'border-emerald-500/40 bg-emerald-500/10 text-emerald-600 dark:text-emerald-400'
+                : 'border-border bg-muted/70 text-foreground'
+            }`}
+          >
+            <span className="font-semibold">{livePitch.noteName}</span>
+            <span className="text-muted-foreground">
+              {tr(
+                `S${liveFretResolution.primary.string} ${liveFretResolution.primary.fret}F`,
+                `${liveFretResolution.primary.string}번줄 ${liveFretResolution.primary.fret}F`
+              )}
+            </span>
+            <span className="text-muted-foreground">
+              {livePitch.centsOff >= 0 ? `+${livePitch.centsOff}c` : `${livePitch.centsOff}c`}
+            </span>
+          </div>
+        )}
 
         {/* Phase II+ Label Switcher & Scale Toggle (Hidden in Phase I) */}
         {!isPhase1 && (
@@ -554,23 +625,39 @@ export function ElectricFretboard({
                   </g>
                 ))}
 
-          {/* Live Detected Note Mirror Marker */}
-          {livePitch.isActive &&
-            livePitch.detectedString &&
-            livePitch.detectedFret !== undefined &&
-            livePitch.detectedFret >= visibleRange[0] &&
-            livePitch.detectedFret <= visibleRange[1] && (
-              <circle
-                cx={getColX(livePitch.detectedFret)}
-                cy={getStringY(livePitch.detectedString)}
-                r={15.5}
-                fill="none"
-                stroke="#FAF9F6"
-                strokeWidth="2"
-                strokeDasharray="3 2"
-                className="pointer-events-none"
-              />
-            )}
+          {/* Live Detected Note Mirror Marker + Subtle Unison Positions */}
+          {livePitch.isActive && liveFretResolution && (
+            <g className="pointer-events-none">
+              {!isBlindExam &&
+                liveFretResolution.unisons
+                  .filter((u) => u.fret >= visibleRange[0] && u.fret <= visibleRange[1])
+                  .map((u) => (
+                    <circle
+                      key={`live-unison-${u.string}-${u.fret}`}
+                      cx={getColX(u.fret)}
+                      cy={getStringY(u.string)}
+                      r={11.5}
+                      fill="none"
+                      stroke="#E2E8F0"
+                      strokeWidth="1.25"
+                      strokeDasharray="2 2"
+                      opacity={0.34}
+                    />
+                  ))}
+              {liveFretResolution.primary.fret >= visibleRange[0] &&
+                liveFretResolution.primary.fret <= visibleRange[1] && (
+                  <circle
+                    cx={getColX(liveFretResolution.primary.fret)}
+                    cy={getStringY(liveFretResolution.primary.string)}
+                    r={liveFretResolution.matchedTarget ? 17 : 15.5}
+                    fill="none"
+                    stroke={liveFretResolution.matchedTarget ? '#34D399' : '#FAF9F6'}
+                    strokeWidth={liveFretResolution.matchedTarget ? '2.5' : '2'}
+                    strokeDasharray={liveFretResolution.matchedTarget ? undefined : '3 2'}
+                  />
+                )}
+            </g>
+          )}
 
           {/* Clickable Hit Targets */}
           {STRINGS_ORDER.map((str) =>

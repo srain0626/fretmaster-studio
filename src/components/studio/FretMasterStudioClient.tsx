@@ -249,6 +249,18 @@ function AuthenticatedStudioWorkspace({
   const lastLoopCountRef = useRef<number>(0);
   const peakBendRef = useRef<number>(0);
   const lastProcessedNoteTimestampRef = useRef<number>(0);
+  const lastAcceptedRef = useRef<{
+    noteId: string;
+    midi: number;
+    at: number;
+    hadSilence: boolean;
+  } | null>(null);
+  const wrongHoldRef = useRef<{
+    noteId: string;
+    midi: number;
+    startedAt: number;
+  } | null>(null);
+  const silenceStartAtRef = useRef<number>(0);
   const lastImprovNoteTimeRef = useRef<number>(0);
   const lastHumMidiRef = useRef<number>(0);
   const evaluationsRef = useRef<Record<string, NoteEvaluation>>({});
@@ -510,6 +522,9 @@ function AuthenticatedStudioWorkspace({
     setHummedMappings([]);
     peakBendRef.current = 0;
     lastLoopCountRef.current = 0;
+    lastAcceptedRef.current = null;
+    wrongHoldRef.current = null;
+    silenceStartAtRef.current = 0;
   }, []);
 
   const handleSelectLesson = (next: Lesson) => {
@@ -717,6 +732,8 @@ function AuthenticatedStudioWorkspace({
     evaluationsRef.current = {};
     maxFlowStreakRef.current = 0;
     lastLoopCountRef.current = 0;
+    lastAcceptedRef.current = null;
+    wrongHoldRef.current = null;
     setIsPlaying(true);
 
     guitarSynthEngine.startTransport({
@@ -801,7 +818,17 @@ function AuthenticatedStudioWorkspace({
 
   // Real-time Pitch Evaluation (Real Guitar + Fretboard Click)
   useEffect(() => {
-    if (!livePitch.isActive) return;
+    const nowWallMs = performance.now();
+    if (!livePitch.isActive) {
+      if (silenceStartAtRef.current === 0) {
+        silenceStartAtRef.current = nowWallMs;
+      } else if (nowWallMs - silenceStartAtRef.current >= 50 && lastAcceptedRef.current) {
+        lastAcceptedRef.current.hadSilence = true;
+      }
+      wrongHoldRef.current = null;
+      return;
+    }
+    silenceStartAtRef.current = 0;
 
     if (isCapturingHum && livePitch.clarity > 0.65) {
       const rounded = Math.round(livePitch.midiFloat);
@@ -833,17 +860,33 @@ function AuthenticatedStudioWorkspace({
     }
 
     if (livePitch.timestampMs === lastProcessedNoteTimestampRef.current) return;
-    if (!livePitch.isOnset && !targetNote?.bendCents) return;
-    if (!livePitch.isOnset && targetNote?.bendCents) {
-      const spec = JUDGMENT_TIERS[judgmentTier];
-      if (peakBendRef.current < targetNote.bendCents * spec.bendCompletionRatio) {
-        return;
-      }
-    }
     lastProcessedNoteTimestampRef.current = livePitch.timestampMs;
+
+    const hasSignalForStepMode = livePitch.isOnset || livePitch.clarity >= 0.58;
+
+    // Helper: prevent single sustain from auto-advancing repeated identical pitches without re-attack or mute
+    const canAcceptPitchForNote = (noteId: string, detectedMidi: number, isOnset: boolean) => {
+      if (livePitch.source === 'simulated') return true;
+      const prevAcc = lastAcceptedRef.current;
+      if (!prevAcc) return true;
+      if (prevAcc.noteId === noteId) return false;
+      if (prevAcc.midi === detectedMidi) {
+        if (nowWallMs - prevAcc.at < 140) return false;
+        return isOnset || prevAcc.hadSilence;
+      }
+      return true;
+    };
 
     // Wait-for-Note Mode
     if (practiceMode === 'wait' && targetNote) {
+      if (!hasSignalForStepMode) return;
+      if (targetNote.bendCents) {
+        const spec = JUDGMENT_TIERS[judgmentTier];
+        if (peakBendRef.current < targetNote.bendCents * spec.bendCompletionRatio) {
+          return;
+        }
+      }
+
       const ev = evaluateNoteHit(
         targetNote,
         livePitch.midiFloat,
@@ -853,6 +896,17 @@ function AuthenticatedStudioWorkspace({
       );
 
       if (ev.result !== 'miss') {
+        if (!canAcceptPitchForNote(targetNote.id, livePitch.nearestMidi, livePitch.isOnset)) {
+          return;
+        }
+        lastAcceptedRef.current = {
+          noteId: targetNote.id,
+          midi: livePitch.nearestMidi,
+          at: nowWallMs,
+          hadSilence: false,
+        };
+        wrongHoldRef.current = null;
+
         const nextEvals = { ...evaluationsRef.current, [targetNote.id]: ev };
         evaluationsRef.current = nextEvals;
         setEvaluations(nextEvals);
@@ -870,6 +924,12 @@ function AuthenticatedStudioWorkspace({
         if (activeNoteIndex + 1 < lesson.notes.length) {
           setActiveNoteIndex((i) => i + 1);
         } else {
+          lastAcceptedRef.current = {
+            noteId: '',
+            midi: livePitch.nearestMidi,
+            at: nowWallMs,
+            hadSilence: false,
+          };
           setCompletedTasks((prev) => new Set(prev).add('wait'));
           setFeedbackBanner({
             result: 'perfect',
@@ -879,11 +939,52 @@ function AuthenticatedStudioWorkspace({
           setActiveNoteIndex(0);
         }
       } else {
+        if (livePitch.source !== 'simulated') {
+          // Ignore leftover tail of immediately accepted previous note; debounce attack transients (110ms)
+          const prevAcc = lastAcceptedRef.current;
+          if (
+            prevAcc &&
+            prevAcc.midi === livePitch.nearestMidi &&
+            !livePitch.isOnset &&
+            !prevAcc.hadSilence &&
+            nowWallMs - prevAcc.at < 450
+          ) {
+            return;
+          }
+
+          const hold = wrongHoldRef.current;
+          if (
+            !hold ||
+            hold.noteId !== targetNote.id ||
+            Math.abs(hold.midi - livePitch.nearestMidi) > 1
+          ) {
+            wrongHoldRef.current = {
+              noteId: targetNote.id,
+              midi: livePitch.nearestMidi,
+              startedAt: nowWallMs,
+            };
+            return;
+          }
+          if (nowWallMs - hold.startedAt < 110) return;
+        }
+
         const targetMidi = getNoteMidi(targetNote.string, targetNote.fret);
         const diffSemis = Math.round(livePitch.midiFloat - targetMidi);
         const absSemis = Math.abs(diffSemis);
+        const octaveTip =
+          diffSemis === 12
+            ? tr(
+                'One octave higher · check the thicker string or lower position',
+                '한 옥타브 높아요 · 더 굵은 줄이나 아래 포지션을 확인해 보세요'
+              )
+            : tr(
+                'One octave lower · check the thinner string or +12 frets up',
+                '한 옥타브 낮아요 · 더 얇은 줄이나 12프렛 위를 확인해 보세요'
+              );
         const directionTip =
-          diffSemis > 0
+          absSemis === 12
+            ? octaveTip
+            : diffSemis > 0
             ? tr(
                 `Slightly sharp · ${absSemis} fret${absSemis === 1 ? '' : 's'} left`,
                 `조금 높아요 · ${absSemis}프렛 왼쪽으로`
@@ -907,9 +1008,17 @@ function AuthenticatedStudioWorkspace({
 
     // Ear Copy Deck Mode
     if (practiceMode === 'earcopy') {
+      if (!hasSignalForStepMode) return;
       const targetIdx = lesson.notes.findIndex((_, i) => !earCopyUnlockedIndices.has(i));
       if (targetIdx === -1) return;
       const earTarget = lesson.notes[targetIdx];
+      if (earTarget.bendCents) {
+        const spec = JUDGMENT_TIERS[judgmentTier];
+        if (peakBendRef.current < earTarget.bendCents * spec.bendCompletionRatio) {
+          return;
+        }
+      }
+
       const ev = evaluateNoteHit(
         earTarget,
         livePitch.midiFloat,
@@ -919,7 +1028,18 @@ function AuthenticatedStudioWorkspace({
       );
 
       if (ev.result !== 'miss') {
+        if (!canAcceptPitchForNote(earTarget.id, livePitch.nearestMidi, livePitch.isOnset)) {
+          return;
+        }
+        lastAcceptedRef.current = {
+          noteId: earTarget.id,
+          midi: livePitch.nearestMidi,
+          at: nowWallMs,
+          hadSilence: false,
+        };
+        wrongHoldRef.current = null;
         peakBendRef.current = 0;
+
         const nextSet = new Set(earCopyUnlockedIndices);
         nextSet.add(targetIdx);
         setEarCopyUnlockedIndices(nextSet);
@@ -961,12 +1081,40 @@ function AuthenticatedStudioWorkspace({
           });
         }
       } else {
+        if (livePitch.source !== 'simulated') {
+          const hold = wrongHoldRef.current;
+          if (
+            !hold ||
+            hold.noteId !== earTarget.id ||
+            Math.abs(hold.midi - livePitch.nearestMidi) > 1
+          ) {
+            wrongHoldRef.current = {
+              noteId: earTarget.id,
+              midi: livePitch.nearestMidi,
+              startedAt: nowWallMs,
+            };
+            return;
+          }
+          if (nowWallMs - hold.startedAt < 110) return;
+        }
+
         const targetMidi = getNoteMidi(earTarget.string, earTarget.fret);
+        const diffSemis = Math.round(livePitch.midiFloat - targetMidi);
         setFeedbackBanner({
           result: 'miss',
           title: `${livePitch.noteName}`,
           detail:
-            livePitch.midiFloat > targetMidi
+            Math.abs(diffSemis) === 12
+              ? diffSemis > 0
+                ? tr(
+                    'Octave high · search the same note one octave lower.',
+                    '한 옥타브 높아요 · 같은 계이름의 아래 옥타브를 찾아보세요.'
+                  )
+                : tr(
+                    'Octave low · search the same note one octave higher.',
+                    '한 옥타브 낮아요 · 같은 계이름의 위 옥타브를 찾아보세요.'
+                  )
+              : livePitch.midiFloat > targetMidi
               ? tr(
                   'Higher than target. Try searching a lower pitch.',
                   '정답보다 높아요. 더 낮은 음을 찾아보세요.'
@@ -980,8 +1128,9 @@ function AuthenticatedStudioWorkspace({
       return;
     }
 
-    // Free Jam Mode
+    // Free Jam Mode (record distinct note onsets)
     if (practiceMode === 'jam' && isPlaying) {
+      if (!livePitch.isOnset) return;
       const now = performance.now();
       const gapMs =
         lastImprovNoteTimeRef.current > 0 ? now - lastImprovNoteTimeRef.current : 500;
@@ -1018,6 +1167,18 @@ function AuthenticatedStudioWorkspace({
       }
 
       if (!closestNote || Math.abs(minBeatDiff) > 1.0) return;
+
+      const existingEval = evaluationsRef.current[closestNote.id];
+      const rankOf = (r: NoteEvaluation['result']) =>
+        r === 'perfect' ? 3 : r === 'good' ? 2 : r === 'pass' ? 1 : 0;
+
+      // Never downgrade an already-passed evaluation on the same note within a pass
+      if (existingEval && existingEval.result !== 'miss') {
+        if (!livePitch.isOnset && livePitch.clarity < 0.6) return;
+      } else if (!livePitch.isOnset && livePitch.clarity < 0.6) {
+        return;
+      }
+
       const timingErrorMs = minBeatDiff * secPerBeat * 1000;
       const ev = evaluateNoteHit(
         closestNote,
@@ -1027,13 +1188,26 @@ function AuthenticatedStudioWorkspace({
         peakBendRef.current
       );
 
+      if (existingEval && existingEval.result !== 'miss') {
+        if (ev.result === 'miss' || rankOf(ev.result) <= rankOf(existingEval.result)) {
+          return;
+        }
+      }
+
+      // Only record an explicit miss on a genuine onset (prevent stray sustain spillover from stamping miss)
+      if (ev.result === 'miss' && !livePitch.isOnset) {
+        return;
+      }
+
       const nextEvals = { ...evaluationsRef.current, [closestNote.id]: ev };
       evaluationsRef.current = nextEvals;
       setEvaluations(nextEvals);
       peakBendRef.current = 0;
 
       if (ev.result !== 'miss') {
-        maxFlowStreakRef.current += 1;
+        if (!existingEval || existingEval.result === 'miss') {
+          maxFlowStreakRef.current += 1;
+        }
       } else {
         maxFlowStreakRef.current = 0;
       }

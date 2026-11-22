@@ -175,6 +175,10 @@ export function findBestFretForMidi(
       score -= Math.min(Math.abs(c.fret - rangeMin), Math.abs(c.fret - rangeMax)) * 10;
     }
 
+    if (rangeMin === 0 && c.fret === 0) {
+      score += 35;
+    }
+
     if (
       preferredScale &&
       preferredScale.some((s) => s.string === c.string && s.fret === c.fret)
@@ -207,5 +211,119 @@ export function findBestFretForMidi(
     fret: best.fret,
     finger,
     intervalLabel: getIntervalLabel(midi, preferredRootPitchClass),
+  };
+}
+
+export interface FretPositionResolution {
+  primary: { string: GuitarString; fret: number };
+  unisons: { string: GuitarString; fret: number }[];
+  matchedTarget: boolean;
+}
+
+/**
+ * Resolve a detected MIDI pitch to the most contextually natural string/fret position
+ * on the guitar fretboard (handling unison duplicates across strings).
+ */
+export function resolveFretPositionForContext(
+  midi: number,
+  context: {
+    targetNote?: {
+      string: GuitarString;
+      fret: number;
+      chordNotes?: { string: GuitarString; fret: number }[];
+    } | null;
+    lessonNotes?: { string: GuitarString; fret: number }[];
+    scaleOverlay?: ScaleOverlayNote[];
+    focusFretRange?: [number, number];
+    visibleRange?: [number, number];
+  } = {}
+): FretPositionResolution | null {
+  const candidates = findPossiblePositionsForMidi(midi, 22);
+  if (candidates.length === 0) return null;
+
+  const { targetNote, lessonNotes, scaleOverlay, focusFretRange = [0, 12], visibleRange } = context;
+
+  // 1. Direct lock onto active target note or chord tone if exact pitch matches
+  if (targetNote) {
+    if (getNoteMidi(targetNote.string, targetNote.fret) === midi) {
+      const primary = { string: targetNote.string, fret: targetNote.fret };
+      return {
+        primary,
+        unisons: candidates.filter((c) => !(c.string === primary.string && c.fret === primary.fret)),
+        matchedTarget: true,
+      };
+    }
+    if (targetNote.chordNotes && targetNote.chordNotes.length > 0) {
+      const matchedChordPos = targetNote.chordNotes.find(
+        (cn) => getNoteMidi(cn.string, cn.fret) === midi
+      );
+      if (matchedChordPos) {
+        const primary = { string: matchedChordPos.string, fret: matchedChordPos.fret };
+        return {
+          primary,
+          unisons: candidates.filter((c) => !(c.string === primary.string && c.fret === primary.fret)),
+          matchedTarget: true,
+        };
+      }
+    }
+  }
+
+  // 2. Context-aware scoring among all unison positions on the neck
+  const [rangeMin, rangeMax] = focusFretRange;
+  const centerFret = (rangeMin + rangeMax) / 2;
+
+  let best = candidates[0];
+  let bestScore = -1e9;
+
+  for (const c of candidates) {
+    let score = 0;
+
+    if (lessonNotes?.some((n) => n.string === c.string && n.fret === c.fret)) {
+      score += 160;
+    }
+
+    if (scaleOverlay?.some((s) => s.string === c.string && s.fret === c.fret)) {
+      score += 80;
+    }
+
+    if (c.fret >= rangeMin && c.fret <= rangeMax) {
+      score += 70;
+    } else {
+      score -= Math.min(Math.abs(c.fret - rangeMin), Math.abs(c.fret - rangeMax)) * 18;
+    }
+
+    if (visibleRange) {
+      if (c.fret >= visibleRange[0] && c.fret <= visibleRange[1]) {
+        score += 35;
+      } else {
+        score -= 40;
+      }
+    }
+
+    // Open-string ergonomics: favor fret 0 in open-position lessons, keep closed shapes inside the box
+    if (c.fret === 0) {
+      score += rangeMin === 0 ? 45 : -25;
+    }
+
+    if (targetNote) {
+      score -= Math.abs(c.string - targetNote.string) * 2;
+      if (!(c.fret === 0 && rangeMin === 0)) {
+        score -= Math.abs(c.fret - targetNote.fret) * 2.5;
+      }
+    }
+
+    score -= Math.abs(c.fret - centerFret) * 1.2;
+
+    if (score > bestScore) {
+      bestScore = score;
+      best = c;
+    }
+  }
+
+  const unisons = candidates.filter((c) => !(c.string === best.string && c.fret === best.fret));
+  return {
+    primary: best,
+    unisons,
+    matchedTarget: false,
   };
 }

@@ -9,11 +9,13 @@ Mic / Hi-Z Interface
   ├── inputMode: 'worklet' ──▶ AudioContext ({ latencyHint: 'interactive' })
   │     ├── Primary: AudioWorkletNode ('guitar-pitch-processor', 128-sample quantum)
   │     │     • Channel routing: 'ch1' | 'ch2' | 'mono'
-  │     │     • Ring buffer: 2048 samples, hopSize: 256 samples (~5.3ms @ 48kHz)
-  │     │     • Onset detector: RMS jump + HF transient delta (>65ms cooldown)
-  │     │     • YIN pitch: 68–1320 Hz (threshold 0.16, fallback min < 0.28) + parabolic interp (±1c)
-  │     │     • Noise gate: `noiseGateDb` (default -52 dB)
-  │     └── Fallback: AnalyserNode + requestAnimationFrame (when worklet blocked)
+  │     │     • Ring buffer: 4096 samples, hopSize: 256 samples (~5.3ms @ 48kHz)
+  │     │     • Pre-filter: DC offset removal + 1-pole ~1400 Hz LPF before YIN
+  │     │     • Onset detector: RMS ratio (>1.45x) + HF transient delta (>55ms cooldown)
+  │     │     • YIN pitch: 65–1450 Hz (threshold 0.18, fallback min < 0.34) + 2*tau subharmonic guard + parabolic interp
+  │     │     • Engine stabilization: 5-frame temporal median, 160ms attack settling onset carryover, legato pitch-shift onsets
+  │     │     • Noise gate: `noiseGateDb` (default -58 dB)
+  │     └── Fallback: AnalyserNode (fftSize: 4096, same DC+LPF+subharmonic YIN) + requestAnimationFrame
   └── inputMode: 'asio-bridge' ──▶ WebSocket (`ws://127.0.0.1:9420`)
         └── Emits `LivePitchData` directly with `source: 'asio-bridge'`
 ```
@@ -33,14 +35,15 @@ Singleton: `guitarSynthEngine = new ElectricGuitarSynthEngine()`
 
 | Tier | UI Label | Perfect Window | Good | Pass | Cents Tolerance | Bend Ratio | Min Pass Score |
 | :--- | :--- | :--- | :--- | :--- | :--- | :--- | :--- |
-| `'relaxed'` | 느슨함 (입문) | `±110ms` | `±220ms` | `±300ms` | `±45c` | `0.65` | `70` |
-| `'standard'` | 표준 (다음 해금) | `±65ms` | `±130ms` | `±180ms` | `±30c` | `0.80` | `80` |
-| `'tight'` | 엄격함 (칼박) | `±35ms` | `±75ms` | `±110ms` | `±18c` | `0.90` | `85` |
-| `'studio'` | 완벽함 (블라인드) | `±18ms` | `±40ms` | `±65ms` | `±10c` | `0.94` | `90` |
+| `'relaxed'` | 느슨함 (입문) | `±110ms` | `±220ms` | `±300ms` | `±55c` | `0.65` | `70` |
+| `'standard'` | 표준 (다음 해금) | `±65ms` | `±130ms` | `±180ms` | `±42c` | `0.80` | `80` |
+| `'tight'` | 엄격함 (칼박) | `±35ms` | `±75ms` | `±110ms` | `±28c` | `0.90` | `85` |
+| `'studio'` | 완벽함 (블라인드) | `±18ms` | `±40ms` | `±65ms` | `±18c` | `0.94` | `90` |
 
 ## Evaluators & Music Theory Utilities
 
-- **`evaluateNoteHit(...)` (`lowLatencyAudioEngine.ts`):** Scores note pitch accuracy + timing delta (offset-compensated by `config.latencyOffsetMs`) + peak bend progress against active `JUDGMENT_TIERS` spec -> returns `NoteEvaluation`.
+- **`evaluateNoteHit(...)` (`lowLatencyAudioEngine.ts`):** Scores note pitch accuracy + timing delta (offset-compensated by `config.latencyOffsetMs`) + peak bend progress against active `JUDGMENT_TIERS` spec (including octave-equivalent chord voicing tolerance) -> returns `NoteEvaluation`.
+- **`resolveFretPositionForContext(midi, context)` (`src/lib/musicTheory.ts`):** Context-aware unison resolver locking onto matching active targets, prioritizing `lessonNotes`, `scaleOverlay`, `focusFretRange`, open-string fret 0 ergonomics, and `visibleRange`, and exposing secondary `unisons[]` across strings.
 - **`evaluateImprovisation(events, scaleOverlay, chordProgression)`:** Computes `harmonicFit`, `chordToneResolution`, `rhythmBreathing`, `expressiveArticulation`, and `overallScore` for Phase IV Jam Lab.
 - **`mapHummedPitchesToFretboard(midiSequence, scaleOverlay, focusRange, keyCenterRootPc)`:** Maps vocal/hummed MIDI pitches onto optimal ergonomic fret positions (`HummedNoteMapping[]`).
 - **Music Theory (`src/lib/musicTheory.ts`):** Standard tuning MIDI `{ 1: 64, 2: 59, 3: 55, 4: 50, 5: 45, 6: 40 }`; `getIntervalLabel(midi, rootPitchClass)` requires **two arguments** (`midi` and `rootPitchClass % 12`).
