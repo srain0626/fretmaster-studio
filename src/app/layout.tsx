@@ -21,6 +21,13 @@ const jetbrainsMono = JetBrains_Mono({
 });
 
 const SITE_URL = "https://fretmaster-studio.vercel.app";
+const GTM_ID = process.env.NEXT_PUBLIC_GTM_ID || "GTM-5PHL3X34";
+const GOOGLE_TAG_INIT_SCRIPT = `
+window.dataLayer = window.dataLayer || [];
+function gtag(){dataLayer.push(arguments);}
+gtag('js', new Date());
+window.dataLayer.push({'gtm.start': new Date().getTime(), event: 'gtm.js'});
+`;
 const SITE_DESCRIPTION =
   "Interactive electric guitar learning platform combining 39 guided lessons, 5-layer fretboard harmony, low-latency AudioWorklet YIN pitch detection, Remotion motion guides, blind ear transcription, and live improvisation feedback in English and Korean.";
 
@@ -105,7 +112,7 @@ const JSON_LD = {
   },
   image: `${SITE_URL}/og-thumbnail.jpg`,
   screenshot: `${SITE_URL}/og-thumbnail.jpg`,
-  softwareVersion: "0.2.5",
+  softwareVersion: "0.2.6",
   license: "https://www.gnu.org/licenses/gpl-3.0.html",
   author: {
     "@type": "Person",
@@ -139,6 +146,15 @@ export default function RootLayout({
       className={`${plusJakarta.variable} ${jetbrainsMono.variable} h-full antialiased`}
     >
       <head>
+        {GTM_ID && (
+          <>
+            <script
+              async
+              src={`https://www.googletagmanager.com/gtm.js?id=${GTM_ID}`}
+            />
+            <script dangerouslySetInnerHTML={{ __html: GOOGLE_TAG_INIT_SCRIPT }} />
+          </>
+        )}
         <script dangerouslySetInnerHTML={{ __html: THEME_INIT_SCRIPT }} />
         <script
           type="application/ld+json"
@@ -146,6 +162,17 @@ export default function RootLayout({
         />
       </head>
       <body className="min-h-full flex flex-col bg-background text-foreground font-sans selection:bg-primary/15 selection:text-foreground">
+        {GTM_ID && (
+          <noscript>
+            <iframe
+              src={`https://www.googletagmanager.com/ns.html?id=${GTM_ID}`}
+              height="0"
+              width="0"
+              style={{ display: "none", visibility: "hidden" }}
+              title="Google Tag Manager"
+            />
+          </noscript>
+        )}
         <LocaleProvider>
           <AuthProvider>
             <TooltipProvider delay={200}>{children}</TooltipProvider>
