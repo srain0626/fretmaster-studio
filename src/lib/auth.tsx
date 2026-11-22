@@ -8,6 +8,7 @@ interface AuthContextValue {
   user: User | null;
   loading: boolean;
   isConfigured: boolean;
+  isAdmin: boolean;
   authError: string | null;
   clearAuthError: () => void;
   signInWithGoogle: (nextPath?: string) => Promise<void>;
@@ -18,6 +19,7 @@ const AuthContext = createContext<AuthContextValue>({
   user: null,
   loading: false,
   isConfigured: false,
+  isAdmin: false,
   authError: null,
   clearAuthError: () => {},
   signInWithGoogle: async () => {},
@@ -28,6 +30,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const configured = isSupabaseConfigured();
   const [user, setUser] = useState<User | null>(null);
   const [loading, setLoading] = useState<boolean>(configured);
+  const [isAdmin, setIsAdmin] = useState<boolean>(false);
   const [authError, setAuthError] = useState<string | null>(null);
 
   useEffect(() => {
@@ -79,6 +82,31 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     };
   }, []);
 
+  useEffect(() => {
+    if (!user?.id) {
+      setIsAdmin(false);
+      return;
+    }
+
+    let cancelled = false;
+    fetch('/api/admin/me', { cache: 'no-store' })
+      .then((res) => (res.ok ? res.json() : { isAdmin: false }))
+      .then((json: { isAdmin?: boolean }) => {
+        if (!cancelled) {
+          setIsAdmin(Boolean(json?.isAdmin));
+        }
+      })
+      .catch(() => {
+        if (!cancelled) {
+          setIsAdmin(false);
+        }
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [user?.id]);
+
   const clearAuthError = useCallback(() => setAuthError(null), []);
 
   const signInWithGoogle = useCallback(async (nextPath = '/studio') => {
@@ -127,12 +155,13 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       user,
       loading,
       isConfigured: configured,
+      isAdmin,
       authError,
       clearAuthError,
       signInWithGoogle,
       signOut,
     }),
-    [authError, clearAuthError, configured, loading, signInWithGoogle, signOut, user]
+    [authError, clearAuthError, configured, isAdmin, loading, signInWithGoogle, signOut, user]
   );
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;

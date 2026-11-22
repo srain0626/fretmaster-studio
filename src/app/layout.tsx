@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import { JetBrains_Mono, Plus_Jakarta_Sans } from "next/font/google";
 import "pretendard/dist/web/variable/pretendardvariable-dynamic-subset.css";
 import { TooltipProvider } from "@/components/ui/tooltip";
+import { PageViewTracker } from "@/components/analytics/PageViewTracker";
 import { AuthProvider } from "@/lib/auth";
 import { LocaleProvider } from "@/lib/i18n";
 import "./globals.css";
@@ -186,6 +187,7 @@ export default function RootLayout({
         )}
         <LocaleProvider>
           <AuthProvider>
+            <PageViewTracker />
             <TooltipProvider delay={200}>{children}</TooltipProvider>
           </AuthProvider>
         </LocaleProvider>

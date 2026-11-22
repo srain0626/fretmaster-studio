@@ -1,0 +1,14 @@
+import type { Metadata } from 'next';
+import { AdminDashboardClient } from '@/components/admin/AdminDashboardClient';
+
+export const metadata: Metadata = {
+  title: 'Admin Analytics',
+  robots: {
+    index: false,
+    follow: false,
+  },
+};
+
+export default function AdminPage() {
+  return <AdminDashboardClient />;
+}

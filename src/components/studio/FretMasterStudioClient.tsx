@@ -145,7 +145,7 @@ interface FeedbackBanner {
 type BottomTabKey = 'tab' | 'lab';
 
 export function FretMasterStudioClient() {
-  const { user, loading, signOut } = useAuth();
+  const { user, isAdmin, loading, signOut } = useAuth();
   const { tr } = useLocale();
 
   if (loading) {
@@ -163,14 +163,23 @@ export function FretMasterStudioClient() {
     return <AuthGateCard />;
   }
 
-  return <AuthenticatedStudioWorkspace key={user.id} user={user} onSignOut={signOut} />;
+  return (
+    <AuthenticatedStudioWorkspace
+      key={user.id}
+      user={user}
+      isAdmin={isAdmin}
+      onSignOut={signOut}
+    />
+  );
 }
 
 function AuthenticatedStudioWorkspace({
   user,
+  isAdmin,
   onSignOut,
 }: {
   user: User;
+  isAdmin: boolean;
   onSignOut: () => Promise<void>;
 }) {
   const [selectedLessonId, setSelectedLessonId] = useState<string>(ALL_LESSONS[0].id);
@@ -1970,6 +1979,7 @@ function AuthenticatedStudioWorkspace({
           onSignOut={() => void onSignOut()}
           errorLogCount={errorLogs.length}
           onOpenErrorModal={() => setErrorModalOpen(true)}
+          isAdmin={isAdmin}
         />
 
         {/* ==================== 2. CENTER MAIN WORKSPACE ==================== */}

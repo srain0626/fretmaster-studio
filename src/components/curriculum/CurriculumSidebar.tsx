@@ -44,6 +44,7 @@ import {
   Radio,
   RefreshCw,
   Settings,
+  ShieldCheck,
   Sun,
   Unlock,
 } from 'lucide-react';
@@ -70,6 +71,7 @@ interface CurriculumSidebarProps {
   onSignOut?: () => void;
   errorLogCount?: number;
   onOpenErrorModal?: () => void;
+  isAdmin?: boolean;
 }
 
 const PHASE_FILTERS: { id: 'all' | PhaseId; enLabel: string; koLabel: string }[] = [
@@ -94,6 +96,7 @@ export function CurriculumSidebar({
   onSignOut,
   errorLogCount = 0,
   onOpenErrorModal,
+  isAdmin = false,
 }: CurriculumSidebarProps) {
   const { locale, preference: localePref, setPreference: setLocalePref, tr } = useLocale();
   const [browserOpen, setBrowserOpen] = useState(false);
@@ -190,6 +193,15 @@ export function CurriculumSidebar({
                 <span className="absolute top-1 right-1 h-1.5 w-1.5 rounded-full bg-destructive" />
               )}
             </Button>
+            {isAdmin && (
+              <Link
+                href="/admin"
+                className="inline-flex h-7 w-7 items-center justify-center rounded-md text-primary hover:bg-accent-soft transition-colors"
+                title={tr('Admin Analytics', '어드민 통계')}
+              >
+                <ShieldCheck className="w-3.5 h-3.5" />
+              </Link>
+            )}
             {user && onSignOut && (
               <Button
                 type="button"
@@ -381,6 +393,15 @@ export function CurriculumSidebar({
               </div>
 
               <div className="flex items-center gap-0.5 shrink-0">
+                {isAdmin && (
+                  <Link
+                    href="/admin"
+                    className="inline-flex h-6 w-6 items-center justify-center rounded-md text-primary hover:bg-accent-soft transition-colors"
+                    title={tr('Admin Analytics', '어드민 통계')}
+                  >
+                    <ShieldCheck className="w-3.5 h-3.5" />
+                  </Link>
+                )}
                 <Button
                   type="button"
                   size="icon-xs"
@@ -665,6 +686,22 @@ export function CurriculumSidebar({
                     </span>
                   )}
                 </Button>
+              </div>
+            )}
+
+            {isAdmin && (
+              <div className="pt-3 border-t border-border flex items-center justify-between gap-3">
+                <div className="flex items-center gap-2 text-xs font-medium text-foreground">
+                  <ShieldCheck className="w-3.5 h-3.5 text-primary" />
+                  <span>{tr('Admin Analytics', '어드민 통계')}</span>
+                </div>
+                <Link
+                  href="/admin"
+                  onClick={() => setSettingsOpen(false)}
+                  className="inline-flex items-center gap-1.5 rounded-lg bg-primary px-3 py-1.5 text-xs font-semibold text-primary-foreground hover:opacity-95 transition-opacity"
+                >
+                  <span>{tr('Open Dashboard', '대시보드 열기')}</span>
+                </Link>
               </div>
             )}
 

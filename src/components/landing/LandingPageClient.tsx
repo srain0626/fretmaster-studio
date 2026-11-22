@@ -40,6 +40,7 @@ import {
   ArrowUp,
   Monitor,
   Moon,
+  ShieldCheck,
   Sun,
 } from 'lucide-react';
 
@@ -218,7 +219,7 @@ function HeroParallaxStage({
 export function LandingPageClient() {
   const { locale, preference: localePref, setPreference: setLocalePref, tr } = useLocale();
   const { themePreference, setThemePreference, resolvedTheme } = useThemePreference();
-  const { user, loading: authLoading, isConfigured, authError, signInWithGoogle } = useAuth();
+  const { user, isAdmin, loading: authLoading, isConfigured, authError, signInWithGoogle } = useAuth();
 
   const [selectedPhase, setSelectedPhase] = useState<PhaseId>('phase-1');
   const [phaseDir, setPhaseDir] = useState(1);
@@ -473,19 +474,31 @@ export function LandingPageClient() {
               </div>
 
               {user ? (
-                <Link
-                  href="/studio"
-                  onClick={() =>
-                    trackStudioEvent('landing_cta_click', {
-                      placement: 'header',
-                      action: 'open_studio',
-                    })
-                  }
-                  className="inline-flex items-center gap-1.5 rounded-lg bg-primary px-3.5 py-2 text-xs font-semibold text-primary-foreground hover:opacity-95 transition-opacity"
-                >
-                  <span>{tr('Open Studio', '스튜디오 열기')}</span>
-                  <ArrowRight className="w-3.5 h-3.5" />
-                </Link>
+                <div className="flex items-center gap-1.5">
+                  {isAdmin && (
+                    <Link
+                      href="/admin"
+                      className="inline-flex items-center gap-1 rounded-lg border border-border bg-card px-2.5 py-2 text-xs font-semibold text-foreground hover:bg-secondary/70 transition-colors"
+                      title={tr('Admin Analytics', '어드민 통계')}
+                    >
+                      <ShieldCheck className="w-3.5 h-3.5 text-primary" />
+                      <span className="hidden sm:inline">Admin</span>
+                    </Link>
+                  )}
+                  <Link
+                    href="/studio"
+                    onClick={() =>
+                      trackStudioEvent('landing_cta_click', {
+                        placement: 'header',
+                        action: 'open_studio',
+                      })
+                    }
+                    className="inline-flex items-center gap-1.5 rounded-lg bg-primary px-3.5 py-2 text-xs font-semibold text-primary-foreground hover:opacity-95 transition-opacity"
+                  >
+                    <span>{tr('Open Studio', '스튜디오 열기')}</span>
+                    <ArrowRight className="w-3.5 h-3.5" />
+                  </Link>
+                </div>
               ) : (
                 <Button
                   type="button"
