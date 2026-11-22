@@ -26,6 +26,8 @@ export interface TransportOptions {
   enableDrumsAndBass: boolean;
   enableMetronome: boolean;
   autoSpeedUpBpm?: number; // +5 BPM per loop
+  countInBeats?: number;
+  onCountInUpdate?: (remainingBeats: number, currentBeatNum: number, totalCountInBeats: number) => void;
   onBeatUpdate?: (beat: number, currentBar: number, loopCount: number, newBpm?: number) => void;
   onNoteTrigger?: (note: NoteEvent) => void;
   onTransportEnd?: () => void;
@@ -52,6 +54,12 @@ export class ElectricGuitarSynthEngine {
   private lastResumeAttemptMs = 0;
   private usingWallClock = false;
   private pendingBpmBump: number | undefined = undefined;
+  private uiBeatAnchorBeat = 0;
+  private uiBeatAnchorWallMs = 0;
+  private uiBeatBpm = 80;
+  private uiLoopStartBeat = 0;
+  private uiLoopEndBeat = 8;
+  private isInCountIn = false;
 
   private currentOptions: TransportOptions | null = null;
 
@@ -336,8 +344,11 @@ export class ElectricGuitarSynthEngine {
     const startBeat = startFromLoopStart
       ? options.loopRangeBars[0] * options.beatsPerBar
       : 0;
-    this.currentBeat = startBeat;
-    this.lastBeatFloor = startBeat - 1;
+    const countInBeats = Math.max(0, Math.floor(options.countInBeats ?? 0));
+    this.currentBeat = startBeat - countInBeats;
+    this.lastBeatFloor = Math.floor(this.currentBeat) - 1;
+    let lastCountInIdx = -1;
+    let countInCleared = countInBeats === 0;
 
     const initWall = performance.now();
     this.lastAudioTime = ctx.currentTime;
@@ -345,6 +356,12 @@ export class ElectricGuitarSynthEngine {
     this.lastResumeAttemptMs = initWall;
     this.usingWallClock = ctx.state !== 'running';
     this.pendingBpmBump = undefined;
+    this.uiBeatAnchorBeat = startBeat;
+    this.uiBeatAnchorWallMs = initWall;
+    this.uiBeatBpm = options.bpm;
+    this.uiLoopStartBeat = options.loopRangeBars[0] * options.beatsPerBar;
+    this.uiLoopEndBeat = (options.loopRangeBars[1] + 1) * options.beatsPerBar;
+    this.isInCountIn = countInBeats > 0;
     this.nextBeatTime = ctx.currentTime + 0.05;
 
     const scheduleStepBeats = 0.25; // 16th-note resolution
@@ -399,6 +416,37 @@ export class ElectricGuitarSynthEngine {
       const loopEndBeat = (opts.loopRangeBars[1] + 1) * opts.beatsPerBar;
 
       while (this.nextBeatTime < nowSec + lookaheadSec) {
+        const baseDelayMs = Math.max(0, (this.nextBeatTime - nowSec) * 1000);
+
+        // Count-In phase before real beatStart
+        if (this.currentBeat < startBeat - 0.001) {
+          const beatRel = this.currentBeat - (startBeat - countInBeats);
+          if (Math.abs(beatRel - Math.round(beatRel)) < 0.001) {
+            const intCountIdx = Math.round(beatRel);
+            if (intCountIdx !== lastCountInIdx) {
+              lastCountInIdx = intCountIdx;
+              if (audioActive) {
+                this.playMetronomeClick(intCountIdx % opts.beatsPerBar === 0, this.nextBeatTime);
+              }
+              const remaining = countInBeats - intCountIdx;
+              const currentNum = intCountIdx + 1;
+              scheduleUiCallback(baseDelayMs, () => {
+                opts.onCountInUpdate?.(remaining, currentNum, countInBeats);
+              });
+            }
+          }
+          this.currentBeat += scheduleStepBeats;
+          this.nextBeatTime += scheduleStepBeats * secPerBeat;
+          continue;
+        }
+
+        if (!countInCleared) {
+          countInCleared = true;
+          scheduleUiCallback(baseDelayMs, () => {
+            opts.onCountInUpdate?.(0, countInBeats, countInBeats);
+          });
+        }
+
         const beatInBar = this.currentBeat % opts.beatsPerBar;
         const barIdx = Math.floor(this.currentBeat / opts.beatsPerBar);
 
@@ -439,7 +487,6 @@ export class ElectricGuitarSynthEngine {
         }
 
         // Trigger Notes in current 16th window
-        const baseDelayMs = Math.max(0, (this.nextBeatTime - nowSec) * 1000);
         for (const note of opts.notes) {
           const nKey = `${this.loopCount}-${note.id}`;
           if (
@@ -468,6 +515,12 @@ export class ElectricGuitarSynthEngine {
         const bpmBumpSnapshot = this.pendingBpmBump;
         this.pendingBpmBump = undefined;
         scheduleUiCallback(baseDelayMs, () => {
+          this.isInCountIn = false;
+          this.uiBeatAnchorBeat = beatSnapshot;
+          this.uiBeatAnchorWallMs = performance.now();
+          this.uiBeatBpm = bpmBumpSnapshot ?? opts.bpm;
+          this.uiLoopStartBeat = opts.loopRangeBars[0] * opts.beatsPerBar;
+          this.uiLoopEndBeat = (opts.loopRangeBars[1] + 1) * opts.beatsPerBar;
           opts.onBeatUpdate?.(beatSnapshot, barSnapshot, loopSnapshot, bpmBumpSnapshot);
         });
 
@@ -518,6 +571,18 @@ export class ElectricGuitarSynthEngine {
     this.triggeredChords.clear();
     this.pendingBpmBump = undefined;
     this.usingWallClock = false;
+    this.isInCountIn = false;
+  }
+
+  public getExactBeatAt(wallMs: number = performance.now()): number {
+    if (!this.isPlaying || this.isInCountIn) {
+      return this.uiBeatAnchorBeat;
+    }
+    const elapsedBeats = ((wallMs - this.uiBeatAnchorWallMs) / 1000) * (this.uiBeatBpm / 60);
+    const loopSpan = Math.max(0.25, this.uiLoopEndBeat - this.uiLoopStartBeat);
+    const rawOffset = this.uiBeatAnchorBeat - this.uiLoopStartBeat + elapsedBeats;
+    const wrapped = ((rawOffset % loopSpan) + loopSpan) % loopSpan;
+    return this.uiLoopStartBeat + wrapped;
   }
 }
 

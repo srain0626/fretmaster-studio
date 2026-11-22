@@ -65,6 +65,9 @@ interface ElectricFretboardProps {
   onBpmChange: (bpm: number) => void;
   ampPreset: AmpPreset;
   onAmpPresetChange: (preset: AmpPreset) => void;
+  countInState?: { remaining: number; current: number; total: number } | null;
+  autoStartArmed?: boolean;
+  autoStartImmediate?: boolean;
 }
 
 const TOTAL_FRETS = 22;
@@ -108,6 +111,9 @@ export function ElectricFretboard({
   onBpmChange,
   ampPreset,
   onAmpPresetChange,
+  countInState = null,
+  autoStartArmed = false,
+  autoStartImmediate = false,
 }: ElectricFretboardProps) {
   const { tr } = useLocale();
   const [zoomFocus, setZoomFocus] = useState(true);
@@ -298,6 +304,18 @@ export function ElectricFretboard({
           </div>
         )}
 
+        {/* Guitar Auto-Start Armed Indicator */}
+        {autoStartArmed && !countInState && (
+          <div className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full border border-primary/35 bg-accent-soft text-[11px] font-medium text-primary">
+            <span className="h-1.5 w-1.5 rounded-full bg-primary animate-pulse" />
+            <span>
+              {autoStartImmediate
+                ? tr('Play 1st note to start exam', '첫 음을 치면 테스트 시작')
+                : tr('Strum guitar to start count-in', '기타를 튕기면 예비박 후 자동 시작')}
+            </span>
+          </div>
+        )}
+
         {/* Phase II+ Label Switcher & Scale Toggle (Hidden in Phase I) */}
         {!isPhase1 && (
           <div className="flex items-center gap-1.5">
@@ -346,7 +364,29 @@ export function ElectricFretboard({
       </div>
 
       {/* SVG Guitar Fretboard */}
-      <div className="px-3 py-1 overflow-x-auto">
+      <div className="relative px-3 py-1 overflow-x-auto">
+        {countInState && countInState.remaining > 0 && (
+          <div className="pointer-events-none absolute inset-0 z-20 flex items-center justify-center bg-background/45 backdrop-blur-[2px]">
+            <div className="flex flex-col items-center gap-2 rounded-2xl border border-border bg-card/95 px-6 py-3.5 shadow-sm">
+              <span className="text-[11px] font-semibold tracking-wider text-muted-foreground uppercase">
+                {tr('Count-In · Get Ready', '예비박 · 준비하세요')}
+              </span>
+              <span className="font-mono text-4xl font-bold tabular-nums text-foreground leading-none">
+                {countInState.remaining}
+              </span>
+              <div className="flex items-center gap-1.5 pt-0.5">
+                {Array.from({ length: countInState.total }, (_, idx) => (
+                  <span
+                    key={`ci-dot-${idx}`}
+                    className={`h-1.5 w-3 rounded-full transition-colors ${
+                      idx < countInState.current ? 'bg-primary' : 'bg-border'
+                    }`}
+                  />
+                ))}
+              </div>
+            </div>
+          </div>
+        )}
         <svg
           viewBox={`0 0 ${svgWidth} ${svgHeight}`}
           className="w-full min-w-[640px] h-auto select-none"
@@ -722,7 +762,9 @@ export function ElectricFretboard({
             {isPlaying ? <Pause className="w-3.5 h-3.5" /> : <Play className="w-3.5 h-3.5" />}
           </Button>
           <span className="font-mono text-xs tabular-nums text-muted-foreground ml-1">
-            {currentBeat.toFixed(0)} / {totalBeats}
+            {countInState && countInState.remaining > 0
+              ? tr(`Count -${countInState.remaining}`, `예비 -${countInState.remaining}`)
+              : `${currentBeat.toFixed(0)} / ${totalBeats}`}
           </span>
         </div>
 

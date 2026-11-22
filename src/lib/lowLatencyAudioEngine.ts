@@ -19,6 +19,7 @@ function isEnglishRuntimeLocale(): boolean {
     : true;
 }
 import type {
+  AdaptiveLatencyProfile,
   AudioDeviceConfig,
   ChordBar,
   GuitarString,
@@ -131,6 +132,8 @@ const EMPTY_PITCH: LivePitchData = {
   noteName: '--',
   centsOff: 0,
   rmsDb: -90,
+  peakDb: -100,
+  isClipping: false,
   clarity: 0,
   isOnset: false,
   isActive: false,
@@ -172,6 +175,8 @@ export class LowLatencyGuitarAudioEngine {
     directMonitor: true,
     noiseGateDb: -58,
     latencyOffsetMs: 12,
+    inputGainDb: 0,
+    autoCalibrateLatency: true,
     asioBridgeUrl: 'ws://127.0.0.1:9420',
   };
 
@@ -216,6 +221,7 @@ export class LowLatencyGuitarAudioEngine {
       this.workletNode.port.postMessage({
         noiseGateDb: this.config.noiseGateDb,
         channelMode: this.config.channelMode,
+        inputGainDb: this.config.inputGainDb ?? 0,
       });
     }
   }
@@ -320,12 +326,21 @@ export class LowLatencyGuitarAudioEngine {
       this.workletNode.port.postMessage({
         noiseGateDb: this.config.noiseGateDb,
         channelMode: this.config.channelMode,
+        inputGainDb: this.config.inputGainDb ?? 0,
       });
 
       this.workletNode.port.onmessage = (event) => {
         const msg = event.data;
         if (!msg) return;
-        this.handleRawAnalysis(msg.frequency, msg.rmsDb, msg.isOnset, msg.clarity, 'worklet');
+        this.handleRawAnalysis(
+          msg.frequency,
+          msg.rmsDb,
+          msg.isOnset,
+          msg.clarity,
+          'worklet',
+          msg.peakDb,
+          msg.isClipping
+        );
       };
 
       this.sourceNode.connect(this.workletNode);
@@ -494,12 +509,17 @@ export class LowLatencyGuitarAudioEngine {
           try {
             const payload = JSON.parse(ev.data);
             if (typeof payload.frequency === 'number') {
+              const rmsVal = payload.rmsDb ?? -40;
+              const peakVal = payload.peakDb ?? rmsVal;
+              const clipVal = Boolean(payload.isClipping || peakVal >= -0.5);
               this.handleRawAnalysis(
                 payload.frequency,
-                payload.rmsDb ?? -40,
+                rmsVal,
                 Boolean(payload.isOnset),
                 payload.clarity ?? 0.9,
-                'asio-bridge'
+                'asio-bridge',
+                peakVal,
+                clipVal
               );
             }
           } catch {
@@ -540,16 +560,32 @@ export class LowLatencyGuitarAudioEngine {
   private startFallbackAnalyserLoop() {
     if (!this.analyser || !this.ctx) return;
     const buf = new Float32Array(this.analyser.fftSize);
+    const scaled = new Float32Array(this.analyser.fftSize);
     const sr = this.ctx.sampleRate;
 
     const tick = () => {
       if (!this.analyser || !this.ctx) return;
       this.analyser.getFloatTimeDomainData(buf);
 
+      const gainDb = Math.max(-18, Math.min(18, this.config.inputGainDb ?? 0));
+      const gainLinear = Math.pow(10, gainDb / 20);
       let sumSq = 0;
-      for (let i = 0; i < buf.length; i++) sumSq += buf[i] * buf[i];
+      let rawPeak = 0;
+      let peak = 0;
+      for (let i = 0; i < buf.length; i++) {
+        const raw = buf[i];
+        const absRaw = Math.abs(raw);
+        if (absRaw > rawPeak) rawPeak = absRaw;
+        const g = raw * gainLinear;
+        scaled[i] = g;
+        const absG = Math.abs(g);
+        if (absG > peak) peak = absG;
+        sumSq += g * g;
+      }
       const rms = Math.sqrt(sumSq / buf.length);
       const rmsDb = rms > 1e-7 ? 20 * Math.log10(rms) : -100;
+      const peakDb = peak > 1e-6 ? Math.min(0, 20 * Math.log10(peak)) : -100;
+      const isClipping = rawPeak >= 0.97 || peak >= 0.98;
       const gateLinear = Math.pow(10, this.config.noiseGateDb / 20);
       const nowMs = performance.now();
 
@@ -563,12 +599,12 @@ export class LowLatencyGuitarAudioEngine {
       let freq = 0;
       let clarity = 0;
       if (rmsDb >= this.config.noiseGateDb) {
-        const res = this.runYinSimple(buf, sr);
+        const res = this.runYinSimple(scaled, sr);
         freq = res.frequency;
         clarity = res.clarity;
       }
 
-      this.handleRawAnalysis(freq, rmsDb, isOnset, clarity, 'analyser');
+      this.handleRawAnalysis(freq, rmsDb, isOnset, clarity, 'analyser', peakDb, isClipping);
       this.fallbackRafId = requestAnimationFrame(tick);
     };
 
@@ -684,7 +720,9 @@ export class LowLatencyGuitarAudioEngine {
     rmsDb: number,
     isOnset: boolean,
     clarity: number,
-    source: LivePitchData['source']
+    source: LivePitchData['source'],
+    peakDb: number = rmsDb,
+    isClipping: boolean = peakDb >= -0.5
   ) {
     const nowMs = performance.now() - this.config.latencyOffsetMs;
 
@@ -703,11 +741,13 @@ export class LowLatencyGuitarAudioEngine {
       if (rmsDb < this.config.noiseGateDb && this.silenceResetCount >= 3) {
         this.resetPitchTrackingState();
       }
-      if (this.lastPitch.isActive || nowMs - this.lastUiEmitMs >= 45) {
+      if (isClipping || this.lastPitch.isActive || nowMs - this.lastUiEmitMs >= 45) {
         this.lastUiEmitMs = nowMs;
         this.emit({
           ...EMPTY_PITCH,
           rmsDb,
+          peakDb,
+          isClipping,
           isOnset: false,
           isActive: false,
           timestampMs: nowMs,
@@ -799,9 +839,10 @@ export class LowLatencyGuitarAudioEngine {
       }
     }
 
-    // Emit immediately on onset, attack-from-silence, or pitch change; throttle steady sustain to ~45 Hz
+    // Emit immediately on onset, clipping peak, attack-from-silence, or pitch change; throttle steady sustain to ~45 Hz
     const shouldEmit =
       effectiveOnset ||
+      isClipping ||
       !this.lastPitch.isActive ||
       this.lastPitch.nearestMidi !== nearestMidi ||
       nowMs - this.lastUiEmitMs >= 22;
@@ -816,6 +857,8 @@ export class LowLatencyGuitarAudioEngine {
       noteName,
       centsOff,
       rmsDb,
+      peakDb,
+      isClipping,
       clarity,
       isOnset: effectiveOnset,
       isActive: true,
@@ -841,6 +884,8 @@ export class LowLatencyGuitarAudioEngine {
       noteName: midiToNoteName(baseMidi),
       centsOff,
       rmsDb: -18,
+      peakDb: -12,
+      isClipping: false,
       clarity: 0.99,
       isOnset: true,
       isActive: true,
@@ -901,6 +946,94 @@ export class LowLatencyGuitarAudioEngine {
 }
 
 export const guitarAudioEngine = new LowLatencyGuitarAudioEngine();
+
+export function computeCalibratedLatency(samplesMs: number[]): {
+  offsetMs: number;
+  jitterMs: number;
+  quality: 'great' | 'ok' | 'noisy';
+} {
+  const finite = samplesMs.filter((n) => Number.isFinite(n));
+  if (finite.length === 0) {
+    return { offsetMs: 0, jitterMs: 0, quality: 'noisy' };
+  }
+  const sorted = [...finite].sort((a, b) => a - b);
+  const core = sorted.length >= 4 ? sorted.slice(1, -1) : sorted;
+  const avg = core.reduce((acc, v) => acc + v, 0) / core.length;
+  const offsetMs = Math.max(-50, Math.min(200, Math.round(avg)));
+  const jitterMs = Math.round(
+    core.reduce((acc, v) => acc + Math.abs(v - avg), 0) / core.length
+  );
+  const quality: 'great' | 'ok' | 'noisy' =
+    jitterMs <= 14 ? 'great' : jitterMs <= 30 ? 'ok' : 'noisy';
+  return { offsetMs, jitterMs, quality };
+}
+
+export const EMPTY_ADAPTIVE_LATENCY_PROFILE: AdaptiveLatencyProfile = {
+  samplesMs: [],
+  totalSampleCount: 0,
+  estimatedOffsetMs: 12,
+  confidencePct: 0,
+  jitterMs: 0,
+  lastUpdatedAt: 0,
+};
+
+export function updateAdaptiveLatencyProfile(
+  prev: AdaptiveLatencyProfile,
+  newRawErrorsMs: number[],
+  resetExisting = false
+): AdaptiveLatencyProfile {
+  const valid = newRawErrorsMs
+    .filter((n) => Number.isFinite(n) && n >= -80 && n <= 240)
+    .map((n) => Math.round(n));
+
+  if (valid.length === 0 && !resetExisting) {
+    return prev;
+  }
+
+  const combined = resetExisting
+    ? valid.slice(-64)
+    : [...prev.samplesMs, ...valid].slice(-64);
+  const totalSampleCount = resetExisting
+    ? valid.length
+    : prev.totalSampleCount + valid.length;
+
+  if (combined.length === 0) {
+    return { ...EMPTY_ADAPTIVE_LATENCY_PROFILE };
+  }
+
+  const sorted = [...combined].sort((a, b) => a - b);
+  let core: number[];
+  if (sorted.length >= 6) {
+    const trim = Math.max(1, Math.floor(sorted.length * 0.2));
+    core = sorted.slice(trim, sorted.length - trim);
+  } else if (sorted.length >= 4) {
+    core = sorted.slice(1, -1);
+  } else {
+    core = sorted;
+  }
+
+  const avg = core.reduce((acc, v) => acc + v, 0) / core.length;
+  const estimatedOffsetMs = Math.max(-50, Math.min(200, Math.round(avg)));
+  const jitterMs = Math.round(
+    core.reduce((acc, v) => acc + Math.abs(v - avg), 0) / core.length
+  );
+
+  const sampleFactor = Math.min(1, combined.length / 32);
+  const consistencyFactor = Math.max(0.25, Math.min(1, 1 - Math.max(0, jitterMs - 8) / 45));
+  const confidencePct =
+    combined.length < 4
+      ? Math.round(combined.length * 8)
+      : Math.round(Math.min(99, (0.25 + 0.75 * sampleFactor) * consistencyFactor * 100));
+
+  return {
+    samplesMs: combined,
+    totalSampleCount,
+    estimatedOffsetMs,
+    confidencePct,
+    jitterMs,
+    lastUpdatedAt: Date.now(),
+  };
+}
 
 export function evaluateNoteHit(
   targetNote: NoteEvent,

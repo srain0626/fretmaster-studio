@@ -15,6 +15,9 @@ class GuitarPitchProcessor extends AudioWorkletProcessor {
 
     // Dynamics & onset state
     this.noiseGateDb = -58;
+    this.inputGainLinear = 1.0;
+    this.hopPeak = 0;
+    this.hopRawPeak = 0;
     this.prevRms = 0;
     this.prevHighEnergy = 0;
     this.lastOnsetTime = -1;
@@ -25,6 +28,10 @@ class GuitarPitchProcessor extends AudioWorkletProcessor {
       if (!msg || typeof msg !== 'object') return;
       if (typeof msg.noiseGateDb === 'number') {
         this.noiseGateDb = msg.noiseGateDb;
+      }
+      if (typeof msg.inputGainDb === 'number') {
+        const clampedDb = Math.max(-18, Math.min(18, msg.inputGainDb));
+        this.inputGainLinear = Math.pow(10, clampedDb / 20);
       }
       if (typeof msg.channelMode === 'string') {
         this.channelMode = msg.channelMode;
@@ -49,7 +56,14 @@ class GuitarPitchProcessor extends AudioWorkletProcessor {
         sample = (ch0[i] + ch1[i]) * 0.5;
       }
 
-      this.ringBuffer[this.writeIndex] = sample;
+      const absRaw = Math.abs(sample);
+      if (absRaw > this.hopRawPeak) this.hopRawPeak = absRaw;
+
+      const gained = sample * this.inputGainLinear;
+      const absGained = Math.abs(gained);
+      if (absGained > this.hopPeak) this.hopPeak = absGained;
+
+      this.ringBuffer[this.writeIndex] = gained;
       this.writeIndex = (this.writeIndex + 1) % this.bufferSize;
       this.samplesSinceAnalysis++;
     }
@@ -85,6 +99,12 @@ class GuitarPitchProcessor extends AudioWorkletProcessor {
     const mean = sum / this.bufferSize;
     const rms = Math.sqrt(sumSq / this.bufferSize);
     const rmsDb = rms > 1e-7 ? 20 * Math.log10(rms) : -100;
+    const peak = this.hopPeak;
+    const rawPeak = this.hopRawPeak;
+    this.hopPeak = 0;
+    this.hopRawPeak = 0;
+    const peakDb = peak > 1e-6 ? Math.min(0, 20 * Math.log10(peak)) : -100;
+    const isClipping = rawPeak >= 0.97 || peak >= 0.98;
     const normHighEnergy = Math.sqrt(highEnergy / this.bufferSize);
 
     // Onset detection via RMS jump and high-frequency pick transient delta
@@ -111,6 +131,8 @@ class GuitarPitchProcessor extends AudioWorkletProcessor {
       this.port.postMessage({
         frequency: 0,
         rmsDb,
+        peakDb,
+        isClipping,
         isOnset: false,
         clarity: 0,
         sampleTime: nowSec,
@@ -203,6 +225,8 @@ class GuitarPitchProcessor extends AudioWorkletProcessor {
       this.port.postMessage({
         frequency: 0,
         rmsDb,
+        peakDb,
+        isClipping,
         isOnset,
         clarity: 0,
         sampleTime: nowSec,
@@ -226,6 +250,8 @@ class GuitarPitchProcessor extends AudioWorkletProcessor {
     this.port.postMessage({
       frequency: frequency >= 65 && frequency <= 1450 ? frequency : 0,
       rmsDb,
+      peakDb,
+      isClipping,
       isOnset,
       clarity,
       sampleTime: nowSec,

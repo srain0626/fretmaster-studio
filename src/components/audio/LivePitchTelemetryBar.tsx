@@ -1,6 +1,6 @@
 'use client';
 
-import React from 'react';
+import React, { useEffect, useState } from 'react';
 import { Button } from '@/components/ui/button';
 import { TunerGaugeIcon } from '@/components/icons/GuitarSvgIcons';
 import type { AudioLatencyTelemetry } from '@/lib/lowLatencyAudioEngine';
@@ -30,11 +30,66 @@ export function LivePitchTelemetryBar({
   onOpenErrorModal,
 }: LivePitchTelemetryBarProps) {
   const { tr } = useLocale();
+  const [clipHoldActive, setClipHoldActive] = useState(false);
+
+  const isClipNow = isAudioRunning && (livePitch.isClipping || livePitch.peakDb >= -0.5);
+  useEffect(() => {
+    if (!isClipNow) return;
+    const onId = window.setTimeout(() => setClipHoldActive(true), 0);
+    const offId = window.setTimeout(() => setClipHoldActive(false), 1500);
+    return () => {
+      window.clearTimeout(onId);
+      window.clearTimeout(offId);
+    };
+  }, [isClipNow, livePitch.timestampMs]);
+
+  const clipHeld = isAudioRunning && (isClipNow || clipHoldActive);
+  const peakDbClamped = Math.max(-60, Math.min(0, livePitch.peakDb ?? -60));
+  const peakPct = Math.max(0, Math.min(100, ((peakDbClamped + 60) / 60) * 100));
+  const peakFillClass =
+    clipHeld || peakDbClamped >= -1
+      ? 'bg-destructive'
+      : peakDbClamped >= -6
+      ? 'bg-amber-500'
+      : peakDbClamped >= -24
+      ? 'bg-emerald-500'
+      : 'bg-muted-foreground/60';
+
   const centsClamped = Math.max(-50, Math.min(50, livePitch.centsOff));
   const inTune = livePitch.isActive && Math.abs(livePitch.centsOff) <= 12;
 
   return (
     <div className="flex items-center gap-2">
+      {isAudioRunning && (
+        <button
+          type="button"
+          onClick={onOpenAudioSetup}
+          className={`flex items-center gap-1.5 rounded-full border px-2 py-1 text-[11px] font-mono tabular-nums transition-colors ${
+            clipHeld
+              ? 'border-destructive/50 bg-destructive/10 text-destructive'
+              : 'border-border bg-card text-muted-foreground hover:border-foreground/30 hover:text-foreground'
+          }`}
+          title={tr(
+            'Live input peak level & clip indicator (click to adjust gain)',
+            '실시간 입력 게인/피크 레벨 (클릭하여 게인 설정)'
+          )}
+        >
+          <span className="h-1.5 w-14 sm:w-16 rounded-full bg-secondary overflow-hidden">
+            <span
+              className={`block h-full rounded-full transition-[width] duration-75 ${peakFillClass}`}
+              style={{ width: `${peakPct}%` }}
+            />
+          </span>
+          <span className={clipHeld ? 'font-bold text-destructive' : 'w-9 text-right'}>
+            {clipHeld
+              ? 'CLIP'
+              : livePitch.peakDb <= -60
+              ? '--dB'
+              : `${Math.round(peakDbClamped)}dB`}
+          </span>
+        </button>
+      )}
+
       {livePitch.isActive && (
         <div className="hidden sm:flex items-center gap-1.5 rounded-full border border-border bg-card px-2.5 py-1 font-mono text-xs tabular-nums">
           <span className={inTune ? 'text-emerald-700 dark:text-emerald-400 font-semibold' : 'text-foreground font-semibold'}>

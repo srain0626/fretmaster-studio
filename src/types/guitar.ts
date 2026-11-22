@@ -140,6 +140,8 @@ export interface LivePitchData {
   noteName: string;
   centsOff: number;
   rmsDb: number;
+  peakDb: number;
+  isClipping: boolean;
   clarity: number;
   isOnset: boolean;
   isActive: boolean;
@@ -200,8 +202,19 @@ export interface AudioDeviceConfig {
   channelMode: ChannelRouteMode;
   directMonitor: boolean;
   noiseGateDb: number; // -70 to -20 dB
-  latencyOffsetMs: number; // -50 to +150 ms
+  latencyOffsetMs: number; // -50 to +200 ms
+  inputGainDb?: number; // -18 to +18 dB
+  autoCalibrateLatency?: boolean;
   asioBridgeUrl: string;
+}
+
+export interface AdaptiveLatencyProfile {
+  samplesMs: number[];
+  totalSampleCount: number;
+  estimatedOffsetMs: number;
+  confidencePct: number;
+  jitterMs: number;
+  lastUpdatedAt: number;
 }
 
 export interface LessonProgressRecord {

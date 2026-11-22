@@ -46,11 +46,13 @@ import {
 } from '@/data/curriculumData';
 import { useAuth } from '@/lib/auth';
 import {
+  EMPTY_ADAPTIVE_LATENCY_PROFILE,
   evaluateImprovisation,
   evaluateNoteHit,
   guitarAudioEngine,
   JUDGMENT_TIERS,
   mapHummedPitchesToFretboard,
+  updateAdaptiveLatencyProfile,
   type AudioLatencyTelemetry,
 } from '@/lib/lowLatencyAudioEngine';
 import { guitarSynthEngine } from '@/lib/guitarSynthEngine';
@@ -66,6 +68,7 @@ import {
 } from '@/lib/progressSync';
 import { useThemePreference } from '@/lib/theme';
 import type {
+  AdaptiveLatencyProfile,
   AmpPreset,
   AudioDeviceConfig,
   FretLabelMode,
@@ -97,6 +100,7 @@ import {
 
 const STORAGE_PROGRESS_KEY = 'fretmaster_studio_progress_v1';
 const STORAGE_AUDIO_KEY = 'fretmaster_studio_audio_v1';
+const STORAGE_LATENCY_PROFILE_KEY = 'fretmaster_adaptive_latency_v1';
 
 const DEFAULT_PROGRESS: UserProgressState = {
   lessonRecords: {},
@@ -122,6 +126,8 @@ const EMPTY_PITCH: LivePitchData = {
   noteName: '--',
   centsOff: 0,
   rmsDb: -90,
+  peakDb: -100,
+  isClipping: false,
   clarity: 0,
   isOnset: false,
   isActive: false,
@@ -198,6 +204,9 @@ function AuthenticatedStudioWorkspace({
   const [audioConfig, setAudioConfig] = useState<AudioDeviceConfig>(() =>
     guitarAudioEngine.getConfig()
   );
+  const [adaptiveLatency, setAdaptiveLatency] = useState<AdaptiveLatencyProfile>(
+    EMPTY_ADAPTIVE_LATENCY_PROFILE
+  );
   const [audioTelemetry, setAudioTelemetry] = useState<AudioLatencyTelemetry>(() =>
     guitarAudioEngine.getTelemetry()
   );
@@ -229,6 +238,26 @@ function AuthenticatedStudioWorkspace({
   const [feedbackBanner, setFeedbackBanner] = useState<FeedbackBanner | null>(null);
   const [reportOpen, setReportOpen] = useState(false);
   const [lastTelemetry, setLastTelemetry] = useState<SessionTelemetry | null>(null);
+  const [examCountInBars, setExamCountInBars] = useState<number>(1);
+  const [examAutoStart, setExamAutoStart] = useState<boolean>(true);
+  const [countInState, setCountInState] = useState<{
+    remaining: number;
+    current: number;
+    total: number;
+  } | null>(null);
+
+  const isExamAutoStartArmed =
+    practiceMode === 'exam' &&
+    !isPlaying &&
+    examAutoStart &&
+    isAudioRunning &&
+    !reportOpen &&
+    !tunerOpen &&
+    !audioSetupOpen &&
+    !analyticsOpen &&
+    !onboardingOpen &&
+    !guideDialogOpen &&
+    !errorModalOpen;
 
   // Ear Copy & Improvisation Lab State
   const [earCopyUnlockedIndices, setEarCopyUnlockedIndices] = useState<Set<number>>(new Set());
@@ -248,6 +277,8 @@ function AuthenticatedStudioWorkspace({
   const cloudHydratedRef = useRef<boolean>(false);
   const lastLoopCountRef = useRef<number>(0);
   const peakBendRef = useRef<number>(0);
+  const countInActiveRef = useRef<boolean>(false);
+  const examAutoStartArmedAtRef = useRef<number>(0);
   const lastProcessedNoteTimestampRef = useRef<number>(0);
   const lastAcceptedRef = useRef<{
     noteId: string;
@@ -265,6 +296,11 @@ function AuthenticatedStudioWorkspace({
   const lastHumMidiRef = useRef<number>(0);
   const evaluationsRef = useRef<Record<string, NoteEvaluation>>({});
   const maxFlowStreakRef = useRef<number>(0);
+  const audioConfigRef = useRef<AudioDeviceConfig>(audioConfig);
+  const adaptiveLatencyRef = useRef<AdaptiveLatencyProfile>(EMPTY_ADAPTIVE_LATENCY_PROFILE);
+  const pendingRawLatencyBatchRef = useRef<number[]>([]);
+  const latencySampledNotesRef = useRef<Set<string>>(new Set());
+  const lastLatencyBarRef = useRef<number>(-1);
 
   const { locale, tr } = useLocale();
 
@@ -339,7 +375,21 @@ function AuthenticatedStudioWorkspace({
       if (savedAudio) {
         const parsedAudio = JSON.parse(savedAudio) as Partial<AudioDeviceConfig>;
         guitarAudioEngine.updateConfig(parsedAudio);
-        setAudioConfig(guitarAudioEngine.getConfig());
+        const syncedAudio = guitarAudioEngine.getConfig();
+        audioConfigRef.current = syncedAudio;
+        setAudioConfig(syncedAudio);
+      }
+      const savedLatency = window.localStorage.getItem(STORAGE_LATENCY_PROFILE_KEY);
+      if (savedLatency) {
+        const parsedLat = JSON.parse(savedLatency) as Partial<AdaptiveLatencyProfile>;
+        if (Array.isArray(parsedLat.samplesMs)) {
+          const loadedProfile: AdaptiveLatencyProfile = {
+            ...EMPTY_ADAPTIVE_LATENCY_PROFILE,
+            ...parsedLat,
+          };
+          adaptiveLatencyRef.current = loadedProfile;
+          setAdaptiveLatency(loadedProfile);
+        }
       }
     } catch {
       // ignore local storage errors
@@ -525,6 +575,8 @@ function AuthenticatedStudioWorkspace({
     lastAcceptedRef.current = null;
     wrongHoldRef.current = null;
     silenceStartAtRef.current = 0;
+    countInActiveRef.current = false;
+    setCountInState(null);
   }, []);
 
   const handleSelectLesson = (next: Lesson) => {
@@ -683,6 +735,66 @@ function AuthenticatedStudioWorkspace({
     [bpm, judgmentTier, lesson, practiceMode, user.id]
   );
 
+  const handleUpdateAudioConfig = useCallback((partial: Partial<AudioDeviceConfig>) => {
+    guitarAudioEngine.updateConfig(partial);
+    const updated = guitarAudioEngine.getConfig();
+    audioConfigRef.current = updated;
+    setAudioConfig(updated);
+    try {
+      window.localStorage.setItem(STORAGE_AUDIO_KEY, JSON.stringify(updated));
+    } catch {
+      // ignore
+    }
+  }, []);
+
+  const persistLatencyProfile = useCallback((nextProfile: AdaptiveLatencyProfile) => {
+    adaptiveLatencyRef.current = nextProfile;
+    setAdaptiveLatency(nextProfile);
+    try {
+      window.localStorage.setItem(STORAGE_LATENCY_PROFILE_KEY, JSON.stringify(nextProfile));
+    } catch {
+      // ignore
+    }
+  }, []);
+
+  const flushAdaptiveLatency = useCallback(() => {
+    const batch = pendingRawLatencyBatchRef.current;
+    if (batch.length === 0) return;
+    pendingRawLatencyBatchRef.current = [];
+
+    const nextProfile = updateAdaptiveLatencyProfile(adaptiveLatencyRef.current, batch);
+    persistLatencyProfile(nextProfile);
+
+    const cfg = audioConfigRef.current;
+    if (
+      cfg.autoCalibrateLatency !== false &&
+      nextProfile.totalSampleCount >= 4 &&
+      Math.abs(nextProfile.estimatedOffsetMs - cfg.latencyOffsetMs) >= 2
+    ) {
+      handleUpdateAudioConfig({ latencyOffsetMs: nextProfile.estimatedOffsetMs });
+    }
+  }, [handleUpdateAudioConfig, persistLatencyProfile]);
+
+  const handleResetAdaptiveLatency = useCallback(() => {
+    pendingRawLatencyBatchRef.current = [];
+    latencySampledNotesRef.current.clear();
+    const empty = { ...EMPTY_ADAPTIVE_LATENCY_PROFILE };
+    persistLatencyProfile(empty);
+  }, [persistLatencyProfile]);
+
+  const handleRecordManualCalibrationSamples = useCallback(
+    (samplesMs: number[]) => {
+      pendingRawLatencyBatchRef.current = [];
+      const seeded = updateAdaptiveLatencyProfile(
+        adaptiveLatencyRef.current,
+        samplesMs,
+        true
+      );
+      persistLatencyProfile(seeded);
+    },
+    [persistLatencyProfile]
+  );
+
   const startTransportForMode = useCallback(
     (
       mode: PracticeMode,
@@ -693,6 +805,7 @@ function AuthenticatedStudioWorkspace({
         enableBackingChords?: boolean;
         enableDrumsAndBass?: boolean;
         enableMetronome?: boolean;
+        countInBeats?: number;
       }
     ) => {
       const targetBpm = overrides?.bpm ?? bpm;
@@ -701,6 +814,8 @@ function AuthenticatedStudioWorkspace({
       const targetChords = overrides?.enableBackingChords ?? enableBackingChords;
       const targetDrums = overrides?.enableDrumsAndBass ?? enableDrumsAndBass;
       const targetMetro = overrides?.enableMetronome ?? enableMetronome;
+      const targetCountInBeats =
+        overrides?.countInBeats ?? (mode === 'exam' ? examCountInBars * lesson.beatsPerBar : 0);
 
       setEvaluations({});
       evaluationsRef.current = {};
@@ -708,6 +823,16 @@ function AuthenticatedStudioWorkspace({
       lastLoopCountRef.current = 0;
       lastAcceptedRef.current = null;
       wrongHoldRef.current = null;
+      pendingRawLatencyBatchRef.current = [];
+      latencySampledNotesRef.current.clear();
+      lastLatencyBarRef.current = -1;
+      if (targetCountInBeats > 0) {
+        countInActiveRef.current = true;
+        setCountInState({ remaining: targetCountInBeats, current: 0, total: targetCountInBeats });
+      } else {
+        countInActiveRef.current = false;
+        setCountInState(null);
+      }
       setIsPlaying(true);
 
       guitarSynthEngine.startTransport({
@@ -723,9 +848,26 @@ function AuthenticatedStudioWorkspace({
         enableDrumsAndBass: targetDrums,
         enableMetronome: targetMetro,
         autoSpeedUpBpm: autoSpeedUp && mode === 'loop' ? 5 : 0,
-        onBeatUpdate: (beat, _barIdx, loopIdx, bumpedBpm) => {
+        countInBeats: targetCountInBeats,
+        onCountInUpdate: (remaining, current, total) => {
+          if (remaining <= 0) {
+            countInActiveRef.current = false;
+            setCountInState(null);
+          } else {
+            countInActiveRef.current = true;
+            setCountInState({ remaining, current, total });
+          }
+        },
+        onBeatUpdate: (beat, barIdx, loopIdx, bumpedBpm) => {
           setCurrentBeat(beat);
           if (bumpedBpm) setBpm(bumpedBpm);
+
+          if (barIdx !== lastLatencyBarRef.current) {
+            if (lastLatencyBarRef.current !== -1) {
+              flushAdaptiveLatency();
+            }
+            lastLatencyBarRef.current = barIdx;
+          }
 
           let activeIdx = 0;
           for (let i = 0; i < lesson.notes.length; i++) {
@@ -741,6 +883,8 @@ function AuthenticatedStudioWorkspace({
               setCompletedTasks((prev) => new Set(prev).add(mode));
             }
             if (mode === 'loop') {
+              latencySampledNotesRef.current.clear();
+              flushAdaptiveLatency();
               evaluationsRef.current = {};
               setEvaluations({});
               setFeedbackBanner({
@@ -758,7 +902,11 @@ function AuthenticatedStudioWorkspace({
               });
             }
             if (mode === 'exam') {
+              flushAdaptiveLatency();
               guitarSynthEngine.stopTransport();
+              countInActiveRef.current = false;
+              setCountInState(null);
+              examAutoStartArmedAtRef.current = performance.now() + 2200;
               setIsPlaying(false);
               finalizeExamSession(evaluationsRef.current, maxFlowStreakRef.current);
             }
@@ -774,7 +922,9 @@ function AuthenticatedStudioWorkspace({
       enableDrumsAndBass,
       enableGuideGuitar,
       enableMetronome,
+      examCountInBars,
       finalizeExamSession,
+      flushAdaptiveLatency,
       lesson,
       loopRangeBars,
       tr,
@@ -784,6 +934,9 @@ function AuthenticatedStudioWorkspace({
   const toggleTransport = useCallback(() => {
     if (isPlaying) {
       guitarSynthEngine.stopTransport();
+      countInActiveRef.current = false;
+      setCountInState(null);
+      examAutoStartArmedAtRef.current = performance.now() + 1800;
       setIsPlaying(false);
       return;
     }
@@ -839,6 +992,23 @@ function AuthenticatedStudioWorkspace({
         setEnableGuideGuitar(false);
         setEnableMetronome(true);
         setBottomTab('tab');
+        examAutoStartArmedAtRef.current = performance.now() + 700;
+        if (examAutoStart && isAudioRunning) {
+          setFeedbackBanner({
+            result: 'good',
+            title: tr('Ready to Auto-Start', '연주 대기 중'),
+            detail:
+              examCountInBars > 0
+                ? tr(
+                    'Strum any note on your guitar to start the count-in, or press Start Exam.',
+                    '기타를 한 번 튕기면 예비박 카운트인 후 테스트가 자동 시작됩니다.'
+                  )
+                : tr(
+                    'Play the 1st note cleanly to begin the exam immediately.',
+                    '첫 음을 정확히 치면 즉시 테스트가 시작됩니다.'
+                  ),
+          });
+        }
       } else {
         setEnableGuideGuitar(true);
         setBottomTab('tab');
@@ -867,6 +1037,9 @@ function AuthenticatedStudioWorkspace({
       enableBackingChords,
       enableDrumsAndBass,
       enableMetronome,
+      examAutoStart,
+      examCountInBars,
+      isAudioRunning,
       resetSessionState,
       startTransportForMode,
       tr,
@@ -943,6 +1116,54 @@ function AuthenticatedStudioWorkspace({
 
     if (livePitch.timestampMs === lastProcessedNoteTimestampRef.current) return;
     lastProcessedNoteTimestampRef.current = livePitch.timestampMs;
+
+    // Auto-start Passing Exam on clean guitar pluck / onset
+    if (
+      isExamAutoStartArmed &&
+      livePitch.source !== 'simulated' &&
+      nowWallMs >= examAutoStartArmedAtRef.current &&
+      livePitch.isOnset &&
+      livePitch.clarity >= 0.65 &&
+      livePitch.rmsDb >= audioConfig.noiseGateDb + 6
+    ) {
+      if (examCountInBars > 0) {
+        startTransportForMode('exam', {
+          countInBeats: examCountInBars * lesson.beatsPerBar,
+        });
+        setFeedbackBanner({
+          result: 'good',
+          title: tr('Count-In Started', '예비박 시작'),
+          detail: tr(
+            'Get ready and enter on beat 1!',
+            '박자를 느끼며 첫 박에 맞춰 시작하세요!'
+          ),
+        });
+        return;
+      }
+
+      const firstNote = lesson.notes[0];
+      if (firstNote) {
+        const firstEv = evaluateNoteHit(
+          firstNote,
+          livePitch.midiFloat,
+          0,
+          judgmentTier,
+          0
+        );
+        if (firstEv.result !== 'miss') {
+          startTransportForMode('exam', { countInBeats: 0 });
+          evaluationsRef.current = { [firstNote.id]: firstEv };
+          setEvaluations({ [firstNote.id]: firstEv });
+          maxFlowStreakRef.current = 1;
+          setFeedbackBanner({
+            result: firstEv.result,
+            title: tr('Exam Started', '테스트 시작'),
+            detail: tr('First note locked! Keep flowing.', '첫 음 인식 완료! 템포에 맞춰 이어가세요.'),
+          });
+        }
+      }
+      return;
+    }
 
     const hasSignalForStepMode = livePitch.isOnset || livePitch.clarity >= 0.58;
 
@@ -1234,14 +1455,33 @@ function AuthenticatedStudioWorkspace({
 
     // Timed Loop & Exam Modes
     if ((practiceMode === 'loop' || practiceMode === 'exam') && isPlaying) {
+      if (countInActiveRef.current) return;
       const secPerBeat = 60 / bpm;
       const loopStartBeat = loopRangeBars[0] * lesson.beatsPerBar;
+      const loopSpan = Math.max(
+        1,
+        (loopRangeBars[1] - loopRangeBars[0] + 1) * lesson.beatsPerBar
+      );
+      const circularDiff = (a: number, b: number) => {
+        let d = a - b;
+        if (d > loopSpan / 2) d -= loopSpan;
+        if (d < -loopSpan / 2) d += loopSpan;
+        return d;
+      };
+
+      const compensatedWallMs =
+        livePitch.source === 'simulated'
+          ? nowWallMs
+          : nowWallMs - audioConfig.latencyOffsetMs;
+      const exactCompBeat = guitarSynthEngine.getExactBeatAt(compensatedWallMs);
+      const exactRawBeat = guitarSynthEngine.getExactBeatAt(nowWallMs);
+
       let closestNote: (typeof lesson.notes)[number] | null = null;
       let minBeatDiff = 999;
 
       for (const n of lesson.notes) {
         if (n.beatStart < loopStartBeat - 0.1) continue;
-        const diff = currentBeat - n.beatStart;
+        const diff = circularDiff(exactCompBeat, n.beatStart);
         if (Math.abs(diff) < Math.abs(minBeatDiff)) {
           minBeatDiff = diff;
           closestNote = n;
@@ -1269,6 +1509,28 @@ function AuthenticatedStudioWorkspace({
         judgmentTier,
         peakBendRef.current
       );
+
+      // Accumulate clean physical guitar note onsets to refine latency progressively per bar
+      if (
+        livePitch.source !== 'simulated' &&
+        livePitch.isOnset &&
+        livePitch.clarity >= 0.65 &&
+        Math.abs(ev.centsError) <= JUDGMENT_TIERS[judgmentTier].centsTolerance
+      ) {
+        const rawTimingErrorMs =
+          circularDiff(exactRawBeat, closestNote.beatStart) * secPerBeat * 1000;
+        if (
+          rawTimingErrorMs >= -80 &&
+          rawTimingErrorMs <= 240 &&
+          !latencySampledNotesRef.current.has(closestNote.id)
+        ) {
+          latencySampledNotesRef.current.add(closestNote.id);
+          pendingRawLatencyBatchRef.current.push(rawTimingErrorMs);
+          if (pendingRawLatencyBatchRef.current.length >= lesson.beatsPerBar) {
+            flushAdaptiveLatency();
+          }
+        }
+      }
 
       if (existingEval && existingEval.result !== 'miss') {
         if (ev.result === 'miss' || rankOf(ev.result) <= rankOf(existingEval.result)) {
@@ -1309,10 +1571,14 @@ function AuthenticatedStudioWorkspace({
     }
   }, [
     activeNoteIndex,
+    audioConfig.latencyOffsetMs,
+    audioConfig.noiseGateDb,
     bpm,
-    currentBeat,
     earCopyUnlockedIndices,
+    examCountInBars,
+    flushAdaptiveLatency,
     isCapturingHum,
+    isExamAutoStartArmed,
     isPlaying,
     judgmentTier,
     keyCenterRootPc,
@@ -1320,6 +1586,7 @@ function AuthenticatedStudioWorkspace({
     livePitch,
     loopRangeBars,
     practiceMode,
+    startTransportForMode,
     tr,
   ]);
 
@@ -1416,17 +1683,6 @@ function AuthenticatedStudioWorkspace({
         },
         true
       );
-    }
-  };
-
-  const handleUpdateAudioConfig = (partial: Partial<AudioDeviceConfig>) => {
-    guitarAudioEngine.updateConfig(partial);
-    const updated = guitarAudioEngine.getConfig();
-    setAudioConfig(updated);
-    try {
-      window.localStorage.setItem(STORAGE_AUDIO_KEY, JSON.stringify(updated));
-    } catch {
-      // ignore
     }
   };
 
@@ -1675,6 +1931,9 @@ function AuthenticatedStudioWorkspace({
             onBpmChange={setBpm}
             ampPreset={ampPreset}
             onAmpPresetChange={setAmpPreset}
+            countInState={countInState}
+            autoStartArmed={isExamAutoStartArmed}
+            autoStartImmediate={examCountInBars === 0}
           />
 
           {/* Lesson Title (No Subtitle) + Primary Action CTA */}
@@ -2019,6 +2278,47 @@ function AuthenticatedStudioWorkspace({
                     <SelectItem value="studio">{tr('Studio (Blind)', '완벽함 (블라인드)')}</SelectItem>
                   </SelectContent>
                 </Select>
+
+                <div className="pt-1.5 space-y-1.5">
+                  <div className="text-[11px] font-medium text-muted-foreground">
+                    {tr('Count-In', '예비박 카운트인')}
+                  </div>
+                  <Select
+                    value={String(examCountInBars)}
+                    onValueChange={(v) => {
+                      if (v !== null) setExamCountInBars(Number(v));
+                    }}
+                  >
+                    <SelectTrigger className="h-8 text-xs">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="1">{tr('1 Bar (4 Beats · Recommended)', '1마디 (4박 · 추천)')}</SelectItem>
+                      <SelectItem value="2">{tr('2 Bars (8 Beats · Relaxed)', '2마디 (8박 · 여유)')}</SelectItem>
+                      <SelectItem value="0">{tr('None (Immediate)', '없음 (바로 시작)')}</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+
+                <div className="pt-1.5 flex items-center justify-between gap-2">
+                  <span className="text-[11px] font-medium text-foreground/90">
+                    {tr('Auto-Start on Guitar', '기타 입력 시 자동 시작')}
+                  </span>
+                  <Switch checked={examAutoStart} onCheckedChange={setExamAutoStart} />
+                </div>
+
+                {examAutoStart && !isAudioRunning && (
+                  <div className="flex items-center justify-between gap-2 rounded-lg bg-muted/60 px-2.5 py-1.5 text-[11px] text-muted-foreground">
+                    <span>{tr('Connect guitar for auto-start', '자동 시작하려면 기타를 연결하세요')}</span>
+                    <button
+                      type="button"
+                      onClick={() => void handleToggleAudio()}
+                      className="font-semibold text-primary hover:underline shrink-0"
+                    >
+                      {tr('Connect', '연결')}
+                    </button>
+                  </div>
+                )}
               </div>
             )}
           </div>
@@ -2139,6 +2439,9 @@ function AuthenticatedStudioWorkspace({
         livePitch={livePitch}
         isAudioRunning={isAudioRunning}
         onRestartAudio={handleRestartAudio}
+        adaptiveLatency={adaptiveLatency}
+        onResetAdaptiveLatency={handleResetAdaptiveLatency}
+        onRecordManualCalibrationSamples={handleRecordManualCalibrationSamples}
       />
 
       <SkillAnalyticsDialog
@@ -2153,8 +2456,10 @@ function AuthenticatedStudioWorkspace({
         telemetry={lastTelemetry}
         hasNextLesson={Boolean(nextLesson)}
         onRetry={() => {
+          setReportOpen(false);
           resetSessionState();
           setPracticeMode('exam');
+          examAutoStartArmedAtRef.current = performance.now() + 900;
         }}
         onLoopWeakBar={(barIdx) => {
           const slowBpm = Math.max(lesson.minBpm, Math.round(bpm * 0.8));
