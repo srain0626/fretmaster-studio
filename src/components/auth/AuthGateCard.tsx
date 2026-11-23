@@ -1,14 +1,15 @@
 'use client';
 
-import React, { useState } from 'react';
+import React, { useMemo, useState, useSyncExternalStore } from 'react';
 import Link from 'next/link';
 import { BrandFretLogo } from '@/components/icons/GuitarSvgIcons';
 import { Button } from '@/components/ui/button';
+import { getLessonById, localizeLesson } from '@/data/curriculumData';
 import { useAuth } from '@/lib/auth';
 import { sanitizeLogLine } from '@/lib/errorSanitizer';
 import { useLocale } from '@/lib/i18n';
 import { useThemePreference } from '@/lib/theme';
-import { ArrowLeft, Cloud, Lock, Monitor, Moon, ShieldCheck, Sun } from 'lucide-react';
+import { ArrowLeft, BookOpen, Cloud, Lock, Monitor, Moon, ShieldCheck, Sun } from 'lucide-react';
 
 function GoogleLogoSvg() {
   return (
@@ -35,16 +36,47 @@ function GoogleLogoSvg() {
   );
 }
 
+function subscribeLocation(): () => void {
+  return () => {};
+}
+
+function getClientLessonParam(): string | null {
+  try {
+    const lessonParam = new URLSearchParams(window.location.search).get('lesson');
+    return lessonParam && getLessonById(lessonParam) ? lessonParam : null;
+  } catch {
+    return null;
+  }
+}
+
+function getServerLessonParam(): string | null {
+  return null;
+}
+
 export function AuthGateCard() {
   const { locale, preference: localePref, setPreference: setLocalePref, tr } = useLocale();
   const { themePreference, setThemePreference } = useThemePreference();
   const { isConfigured, authError, signInWithGoogle } = useAuth();
   const [submitting, setSubmitting] = useState(false);
+  const requestedLessonId = useSyncExternalStore(
+    subscribeLocation,
+    getClientLessonParam,
+    getServerLessonParam
+  );
+
+  const targetLesson = useMemo(() => {
+    if (!requestedLessonId) return null;
+    const found = getLessonById(requestedLessonId);
+    return found ? localizeLesson(found, locale) : null;
+  }, [locale, requestedLessonId]);
 
   const handleGoogleLogin = async () => {
     setSubmitting(true);
     try {
-      await signInWithGoogle('/studio');
+      const nextTarget = requestedLessonId
+        ? `/studio?lesson=${encodeURIComponent(requestedLessonId)}`
+        : '/studio';
+      await signInWithGoogle(nextTarget);
     } finally {
       setSubmitting(false);
     }
@@ -143,14 +175,21 @@ export function AuthGateCard() {
               <span>{tr('Member Studio Access', '회원 전용 스튜디오')}</span>
             </div>
             <h1 className="text-xl sm:text-2xl font-bold tracking-tight text-foreground">
-              {tr('Sign in to FretMaster Studio', 'FretMaster Studio 로그인')}
+              {tr('Start Your Guitar Studio', '기타 레슨 스튜디오 시작하기')}
             </h1>
             <p className="text-xs sm:text-sm text-muted-foreground leading-relaxed">
               {tr(
-                'Your 39-lesson mastery records, skill radar stats, practice streaks, and audio calibration sync automatically across devices.',
-                '39개 레슨 마스터리, 5대 역량 분석, 연속 연습 기록과 오디오 설정이 계정별로 안전하게 클라우드에 저장됩니다.'
+                'Sign in once for free to open all 39 interactive lessons and automatically save your progress, best BPM, and weak bars.',
+                '무료 로그인 한 번으로 39개 전체 레슨을 열고, 내 연습 진도와 최고 BPM·취약 마디 기록을 자동으로 이어가세요.'
               )}
             </p>
+            {targetLesson && (
+              <div className="inline-flex items-center gap-2 rounded-xl border border-primary/35 bg-accent-soft px-3.5 py-2 text-xs text-foreground">
+                <BookOpen className="w-3.5 h-3.5 text-primary shrink-0" />
+                <span className="font-mono font-semibold text-primary">{targetLesson.code}</span>
+                <span className="truncate font-medium">{targetLesson.title}</span>
+              </div>
+            )}
           </div>
 
           {!isConfigured && (
@@ -186,11 +225,11 @@ export function AuthGateCard() {
             <div className="grid grid-cols-2 gap-2 pt-1 text-[11px] text-muted-foreground">
               <div className="flex items-center gap-1.5 rounded-lg border border-border/70 bg-background/60 px-2.5 py-2">
                 <Cloud className="w-3.5 h-3.5 text-primary shrink-0" />
-                <span>{tr('Auto Cloud Save', '자동 클라우드 저장')}</span>
+                <span>{tr('39 Lessons Free', '39개 전 레슨 무료')}</span>
               </div>
               <div className="flex items-center gap-1.5 rounded-lg border border-border/70 bg-background/60 px-2.5 py-2">
                 <ShieldCheck className="w-3.5 h-3.5 text-primary shrink-0" />
-                <span>{tr('Row-Level Isolation', '개인별 DB 격리')}</span>
+                <span>{tr('Auto Progress Sync', '내 진도 자동 저장')}</span>
               </div>
             </div>
           </div>

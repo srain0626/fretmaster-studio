@@ -25,7 +25,7 @@
 | Pitch DSP, ASIO bridge, synth engine, judgment tiers, scoring math | [04-AUDIO-DSP.md](04-AUDIO-DSP.md) |
 | Remotion guide animations, cue audio sync, SVG composition rules | [05-ANIMATIONS.md](05-ANIMATIONS.md) |
 | Build/lint commands, Windows PowerShell traps, debugging, QA checklist | [06-MAINTENANCE-RUNBOOK.md](06-MAINTENANCE-RUNBOOK.md) |
-| Public landing page, Supabase Google OAuth, RLS DB schema & cloud sync | [07-AUTH-AND-DATABASE.md](07-AUTH-AND-DATABASE.md) |
+| Public landing page, `?lesson=` deep-links, Supabase Google OAuth, RLS DB & `/admin` stats | [07-AUTH-AND-DATABASE.md](07-AUTH-AND-DATABASE.md) |
 
 ## Repository Tree
 
@@ -35,25 +35,29 @@ GuitarTeacher/
 ├── LICENSE                           # GNU GPL-3.0 full license text
 ├── README.md                         # Global English showcase README, roadmap & AI guide
 ├── README.ko.md                      # Korean README edition
+├── ROADMAP.md                        # v0.3.1 baseline -> v0.4.0..v1.0.0 milestone roadmap
 ├── next.config.ts                    # Turbopack root & CSS rule, cacheComponents
 ├── components.json                   # shadcn base-nova config
 ├── docs/assets/                      # README hero thumbnail & Light/Dark previews
 ├── supabase/
-│   └── schema.sql                    # PostgreSQL profiles, progress, sessions & RLS policies
+│   └── schema.sql                    # PostgreSQL profiles, progress, sessions, analytics_events & RLS
+├── tests/                            # Node test runner suites (`dsp`, `polyphonic`, `transport`, `admin`)
 ├── public/worklets/
-│   └── guitarPitchWorklet.js         # 128-sample AudioWorklet YIN DSP processor
+│   └── guitarPitchWorklet.js         # AudioWorklet YIN + 8192-pt FFT DSP processor
 └── src/
     ├── proxy.ts                      # Next.js 16 session refresh proxy (replaces middleware)
     ├── types/guitar.ts               # Canonical domain & telemetry interfaces
     ├── lib/
     │   ├── supabase/                 # Browser & SSR Supabase client helpers
-    │   ├── auth.tsx                  # AuthProvider, Google OAuth sign-in & sign-out
+    │   ├── auth.tsx                  # AuthProvider, Google OAuth sign-in (`?next=`), admin check
+    │   ├── adminAuth.ts              # Server-side admin RBAC verification helpers
+    │   ├── analytics.ts              # Privacy-safe GTM `dataLayer` + `/api/telemetry` emitter
     │   ├── progressSync.ts           # Conflict-free local+cloud merge & PostgreSQL sync
     │   ├── theme.ts                  # Shared Light/Dark/System theme hook
     │   ├── i18n.tsx                  # EN/KO LocaleProvider, navigator auto-detect & tr()
     │   ├── musicTheory.ts            # MIDI, frequency, interval, muted 4-finger colors
     │   ├── guitarSynthEngine.ts      # Web Audio guitar synth & lookahead transport
-    │   ├── lowLatencyAudioEngine.ts  # Worklet/Analyser/ASIO capture + scoring math
+    │   ├── lowLatencyAudioEngine.ts  # Worklet/Analyser/ASIO capture + polyphonic & mono scoring
     │   └── utils.ts                  # `cn` re-export
     ├── data/
     │   ├── modulesMeta.ts            # 9 modules (Phase I-IV) metadata (KO source)
@@ -68,16 +72,21 @@ GuitarTeacher/
     ├── app/
     │   ├── globals.css               # Tailwind v4 + HeroUI + Light/Dark CSS vars
     │   ├── layout.tsx                # Fonts, SEO/JSON-LD, theme script, AuthProvider, TooltipProvider
-    │   ├── page.tsx                  # Public bilingual Landing Page (`/`)
-    │   ├── studio/page.tsx           # Protected interactive Studio workspace (`/studio`)
+    │   ├── manifest.ts               # PWA web app manifest
+    │   ├── page.tsx                  # Public learner-focused Landing Page (`/`)
+    │   ├── studio/page.tsx           # Protected interactive Studio workspace (`/studio`, `?lesson=`)
+    │   ├── admin/page.tsx            # Admin-only funnel & table analytics console (`/admin`)
+    │   ├── api/                      # `/api/telemetry`, `/api/admin/me`, `/api/admin/stats`
     │   ├── auth/callback/route.ts    # PKCE OAuth callback handler (`/auth/callback`)
     │   ├── robots.ts                 # Static robots.txt route
     │   ├── sitemap.ts                # Static sitemap.xml route
     │   └── icon.svg                  # Brand monoline icon
     └── components/
-        ├── landing/                  # `LandingPageClient.tsx`
+        ├── landing/                  # `LandingPageClient`, `MagicMoveFretboardDemo`, `LiveCoachingShowcase`, `WorkflowStageShowcase`
+        ├── admin/                    # `AdminDashboardClient.tsx`
+        ├── analytics/                # `PageViewTracker.tsx`
         ├── auth/                     # `AuthGateCard.tsx`
-        ├── studio/                   # `FretMasterStudioClient.tsx` (auth-gated orchestrator)
+        ├── studio/                   # `FretMasterStudioClient`, `StudioOnboardingDialog`, `ErrorReportDialog`
         ├── ui/                       # 15 shadcn/base-ui primitives
         ├── icons/GuitarSvgIcons.tsx  # Custom monoline SVGs (CSS var tokens)
         ├── motion/StudioMotion.tsx   # Framer Motion springs & MotionConfig

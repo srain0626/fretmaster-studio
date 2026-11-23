@@ -30,13 +30,14 @@ Export aggregator: `src/data/curriculumData.ts` (`ALL_LESSONS`, `MODULES`, `CATE
 
 ## Unlock & Mastery Rules
 
-- **Sequential Unlock (`CurriculumSidebar.tsx`):** `m1-1` (`globalIdx === 0`) is always unlocked. Lesson `N` unlocks when `progress.lessonRecords[ALL_LESSONS[N-1].id]?.completed === true` OR `progress.freeExploreMode === true`.
-- **Exam Passing (`page.tsx` `finalizeExamSession`):** Passes when `score >= JUDGMENT_TIERS[judgmentTier].minPassScore` (`70/80/85/90`). Passing sets `completed = true`, bumps skills `+4` (retry bumps `+1`), updates `bestBpm`, and unlocks `getNextLesson(lesson.id)`.
+- **Sequential Unlock (`CurriculumSidebar.tsx`):** `m1-1` (`globalIdx === 0`) is always unlocked. Lesson `N` unlocks when `progress.lessonRecords[ALL_LESSONS[N-1].id]?.completed === true`, `ALL_LESSONS[N-1].skipExam === true` (for example `m1-1` warm-up auto-unlocking `m1-2`), OR `progress.freeExploreMode === true`.
+- **Warm-Up Exemption (`skipExam`):** `m1-1` sets `skipExam: true` so beginners skip the passing exam gate, mark `m1-1` complete automatically on guide/wait/loop completion or advancing to `m1-2`, and continue smoothly.
+- **Exam Passing (`FretMasterStudioClient.tsx` `finalizeExamSession`):** Passes when `score >= JUDGMENT_TIERS[judgmentTier].minPassScore` (`70/80/85/90`). Passing sets `completed = true`, bumps skills `+4` (retry bumps `+1`), updates `bestBpm`, and unlocks `getNextLesson(lesson.id)`.
 
 ## Core Authoring Schema & Helpers
 
 Key types in `src/types/guitar.ts`:
-- `Lesson`: `{ id, moduleId, phaseId, orderInModule, code, title, subtitle, category, difficulty, isCheckpoint, defaultBpm, minBpm, maxBpm, recommendedAmp, beatsPerBar, totalBars, focusFretRange, pedagogyTags, harmonyConcept, postureGuide, scaleOverlay, chordProgression, notes, supportsEarCopy?, supportsJam?, jamPrompt? }`
+- `Lesson`: `{ id, moduleId, phaseId, orderInModule, code, title, subtitle, category, difficulty, isCheckpoint, defaultBpm, minBpm, maxBpm, recommendedAmp, beatsPerBar, totalBars, focusFretRange, pedagogyTags, harmonyConcept, postureGuide, scaleOverlay, chordProgression, notes, supportsEarCopy?, supportsJam?, skipExam?, jamPrompt? }`
 - `NoteEvent`: `{ id, string: 1..6, fret, finger: 0..4, pick: 'D'|'U'|'H'|'P'|'S'|'T', technique: ArticulationType, bendCents?, slideToFret?, beatStart, durationBeats, intervalLabel, chordContext?, chordDegree?, anchorFinger?, chordNotes?, coachingNote? }`
 
 Factories in `src/data/curriculumHelpers.ts`:

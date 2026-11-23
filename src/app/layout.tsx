@@ -29,9 +29,9 @@ function gtag(){dataLayer.push(arguments);}
 gtag('js', new Date());
 window.dataLayer.push({'gtm.start': new Date().getTime(), event: 'gtm.js'});
 `;
-const SITE_TITLE = "FretMaster Studio — Electric Guitar Learning";
+const SITE_TITLE = "FretMaster Studio — Interactive Electric Guitar Lessons";
 const SITE_DESCRIPTION =
-  "Learn electric guitar with 39 interactive lessons, real-time pitch & chord feedback, fretboard harmony guides, and cloud progress sync.";
+  "Go beyond memorizing TAB numbers. Learn electric guitar across 39 interactive lessons with real-time note, chord, and bend coaching, slow-motion hand posture guides, and automatic progress sync.";
 
 export const metadata: Metadata = {
   metadataBase: new URL(SITE_URL),
@@ -122,7 +122,7 @@ const JSON_LD = {
       },
       image: `${SITE_URL}/og-thumbnail.jpg`,
       screenshot: `${SITE_URL}/og-thumbnail.jpg`,
-      softwareVersion: "0.3.0",
+      softwareVersion: "0.3.1",
       license: "https://www.gnu.org/licenses/gpl-3.0.html",
       author: {
         "@type": "Person",

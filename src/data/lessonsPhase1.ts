@@ -19,6 +19,7 @@ export const PHASE_1_LESSONS: Lesson[] = [
     category: 'mechanics',
     difficulty: 1,
     isCheckpoint: false,
+    skipExam: true,
     defaultBpm: 68,
     minBpm: 50,
     maxBpm: 110,
@@ -40,7 +41,7 @@ export const PHASE_1_LESSONS: Lesson[] = [
     postureGuide: {
       thumbPosition: '왼손은 줄을 가볍게 감싸 뮤트 준비, 오른손 손날을 브리지 새들에 가볍게 얹으세요.',
       leftHandTip:
-        '개방현 연습에서는 이전 줄을 뮤트하지 않으면 울림이 겹쳐 피치 인식 및 테스트 통과가 어렵습니다. 다음 줄을 치기 직전 왼손가락이나 오른손 손날로 방금 친 줄을 살짝 터치해 잔향을 완전히 끊어주세요.',
+        '개방현은 울림이 길게 남으므로, 다음 줄을 치기 직전 왼손가락이나 오른손 손날로 방금 친 줄을 살짝 터치해 잔향을 정리하면 소리와 음정 인식이 한결 또렷해집니다.',
       rightHandTip: '피크 끝을 줄과 45도 정도로 살짝 기울여 다운(∏)과 업(V)이 걸리지 않고 진자처럼 왕복하게 만듭니다.',
       commonMistake:
         '이전 개방현(특히 6·5번 저음현)의 울림을 뮤트하지 않은 채 다음 줄을 쳐서 화음이 겹치거나 피크가 줄에 깊게 걸리는 실수',

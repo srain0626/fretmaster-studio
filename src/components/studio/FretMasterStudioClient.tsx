@@ -311,6 +311,12 @@ function AuthenticatedStudioWorkspace({
   const pendingRawLatencyBatchRef = useRef<number[]>([]);
   const latencySampledNotesRef = useRef<Set<string>>(new Set());
   const lastLatencyBarRef = useRef<number>(-1);
+  const progressRef = useRef<UserProgressState>(DEFAULT_PROGRESS);
+  const warmupTrackedRef = useRef<Set<string>>(new Set());
+
+  useEffect(() => {
+    progressRef.current = progress;
+  }, [progress]);
 
   const { locale, tr } = useLocale();
 
@@ -405,6 +411,53 @@ function AuthenticatedStudioWorkspace({
       // ignore local storage errors
     }
 
+    let requestedLessonParam: string | null = null;
+    try {
+      const queryLesson = new URLSearchParams(window.location.search).get('lesson');
+      if (queryLesson && getLessonById(queryLesson)) {
+        requestedLessonParam = queryLesson;
+        window.history.replaceState(null, '', window.location.pathname);
+      }
+    } catch {
+      // ignore URL query errors
+    }
+
+    const applyInitialLessonConfig = (targetLesson: Lesson) => {
+      setSelectedLessonId(targetLesson.id);
+      setAmpPreset(targetLesson.recommendedAmp);
+      setBpm(targetLesson.defaultBpm);
+      setLoopRangeBars([0, targetLesson.totalBars - 1]);
+      const nextIsPhase1 = targetLesson.phaseId === 'phase-1';
+      setEnableDrumsAndBass(!nextIsPhase1);
+      setEnableBackingChords(!nextIsPhase1 && !targetLesson.supportsEarCopy);
+      if (targetLesson.supportsEarCopy) {
+        setPracticeMode('earcopy');
+        setBottomTab('lab');
+        setEnableGuideGuitar(true);
+      } else if (targetLesson.supportsJam) {
+        setPracticeMode('jam');
+        setBottomTab('lab');
+        setEnableGuideGuitar(false);
+      } else {
+        setPracticeMode('guide');
+        setBottomTab('tab');
+        setEnableGuideGuitar(true);
+      }
+    };
+
+    if (requestedLessonParam) {
+      const requestedLesson = getLessonById(requestedLessonParam);
+      if (requestedLesson) {
+        applyInitialLessonConfig(requestedLesson);
+      }
+      if (requestedLessonParam !== ALL_LESSONS[0].id) {
+        localProgress = {
+          ...localProgress,
+          freeExploreMode: true,
+        };
+      }
+    }
+
     setProgress(localProgress);
     setSyncStatus('syncing');
 
@@ -413,8 +466,16 @@ function AuthenticatedStudioWorkspace({
         if (!active) return;
 
         const merged = mergeUserProgress(localProgress, cloud?.progress ?? null);
+        const targetLessonId = requestedLessonParam || cloud?.lastLessonId || ALL_LESSONS[0].id;
+        const targetLesson = getLessonById(targetLessonId);
+        const needsFreeExplore =
+          Boolean(requestedLessonParam) &&
+          targetLesson !== undefined &&
+          targetLesson.id !== ALL_LESSONS[0].id;
+
         const normalizedMerged: UserProgressState = {
           ...merged,
+          freeExploreMode: merged.freeExploreMode || needsFreeExplore,
           dailyPracticeSeconds:
             merged.lastPracticeDate === today ? merged.dailyPracticeSeconds : 0,
           lastPracticeDate: today,
@@ -422,13 +483,8 @@ function AuthenticatedStudioWorkspace({
 
         setProgress(normalizedMerged);
 
-        const targetLessonId = cloud?.lastLessonId || ALL_LESSONS[0].id;
-        const targetLesson = getLessonById(targetLessonId);
         if (targetLesson) {
-          setSelectedLessonId(targetLesson.id);
-          setAmpPreset(targetLesson.recommendedAmp);
-          setBpm(targetLesson.defaultBpm);
-          setLoopRangeBars([0, targetLesson.totalBars - 1]);
+          applyInitialLessonConfig(targetLesson);
         }
 
         if (cloud?.audioConfig) {
@@ -589,40 +645,104 @@ function AuthenticatedStudioWorkspace({
     setCountInState(null);
   }, []);
 
-  const handleSelectLesson = (next: Lesson) => {
-    resetSessionState();
-    setSelectedLessonId(next.id);
-    setBpm(next.defaultBpm);
-    setAmpPreset(next.recommendedAmp);
-    setLoopRangeBars([0, next.totalBars - 1]);
-    setCompletedTasks(new Set());
-    setGuideSection('both');
-    setGuideDialogOpen(true);
-    trackStudioEvent('lesson_selected', {
-      lesson_id: next.id,
-      lesson_code: next.code,
-      phase_id: next.phaseId,
-    });
+  const completeWarmupLesson = useCallback(
+    (targetLesson: Lesson) => {
+      if (!targetLesson.skipExam) return;
+      const alreadyCompleted = Boolean(
+        progressRef.current.lessonRecords[targetLesson.id]?.completed
+      );
+      if (alreadyCompleted || warmupTrackedRef.current.has(targetLesson.id)) return;
 
-    // Context-aware defaults per curriculum phase
-    const nextIsPhase1 = next.phaseId === 'phase-1';
-    setEnableDrumsAndBass(!nextIsPhase1);
-    setEnableBackingChords(!nextIsPhase1 && !next.supportsEarCopy);
+      warmupTrackedRef.current.add(targetLesson.id);
+      trackStudioEvent('warmup_completed', {
+        lesson_id: targetLesson.id,
+        bpm,
+      });
 
-    if (next.supportsEarCopy) {
-      setPracticeMode('earcopy');
-      setBottomTab('lab');
-      setEnableGuideGuitar(true);
-    } else if (next.supportsJam) {
-      setPracticeMode('jam');
-      setBottomTab('lab');
-      setEnableGuideGuitar(false);
-    } else {
-      setPracticeMode('guide');
-      setBottomTab('tab');
-      setEnableGuideGuitar(true);
+      setProgress((prev) => {
+        if (prev.lessonRecords[targetLesson.id]?.completed) return prev;
+        const existing = prev.lessonRecords[targetLesson.id];
+        const nextRecords = {
+          ...prev.lessonRecords,
+          [targetLesson.id]: {
+            completed: true,
+            bestScore: Math.max(existing?.bestScore ?? 0, 100),
+            bestGrade: existing?.bestScore ? existing.bestGrade : ('S' as const),
+            highestTierCleared: existing?.highestTierCleared ?? judgmentTier,
+            bestBpm: Math.max(existing?.bestBpm ?? 0, bpm),
+            earCopySolved: existing?.earCopySolved ?? false,
+          },
+        };
+        const totalCompletedCount = Object.values(nextRecords).filter((r) => r.completed).length;
+
+        const nextSkills = { ...prev.skills };
+        if (targetLesson.category === 'mechanics' || targetLesson.category === 'techniques') {
+          nextSkills.mechanics = Math.min(100, nextSkills.mechanics + 4);
+        } else if (targetLesson.category === 'scales' || targetLesson.category === 'chords') {
+          nextSkills.fretboardVision = Math.min(100, nextSkills.fretboardVision + 4);
+        } else if (targetLesson.category === 'genres' || targetLesson.category === 'solos') {
+          nextSkills.creativePhrasing = Math.min(100, nextSkills.creativePhrasing + 4);
+        }
+
+        return {
+          ...prev,
+          lessonRecords: nextRecords,
+          totalCompletedCount,
+          skills: nextSkills,
+        };
+      });
+    },
+    [bpm, judgmentTier]
+  );
+
+  const handleSelectLesson = useCallback(
+    (next: Lesson) => {
+      if (rawLesson.skipExam && next.id === getNextLesson(rawLesson.id)?.id) {
+        completeWarmupLesson(rawLesson);
+      }
+      resetSessionState();
+      setSelectedLessonId(next.id);
+      setBpm(next.defaultBpm);
+      setAmpPreset(next.recommendedAmp);
+      setLoopRangeBars([0, next.totalBars - 1]);
+      setCompletedTasks(new Set());
+      setGuideSection('both');
+      setGuideDialogOpen(true);
+      trackStudioEvent('lesson_selected', {
+        lesson_id: next.id,
+        lesson_code: next.code,
+        phase_id: next.phaseId,
+      });
+
+      // Context-aware defaults per curriculum phase
+      const nextIsPhase1 = next.phaseId === 'phase-1';
+      setEnableDrumsAndBass(!nextIsPhase1);
+      setEnableBackingChords(!nextIsPhase1 && !next.supportsEarCopy);
+
+      if (next.supportsEarCopy) {
+        setPracticeMode('earcopy');
+        setBottomTab('lab');
+        setEnableGuideGuitar(true);
+      } else if (next.supportsJam) {
+        setPracticeMode('jam');
+        setBottomTab('lab');
+        setEnableGuideGuitar(false);
+      } else {
+        setPracticeMode('guide');
+        setBottomTab('tab');
+        setEnableGuideGuitar(true);
+      }
+    },
+    [completeWarmupLesson, rawLesson, resetSessionState]
+  );
+
+  const handleAdvanceToNextLesson = useCallback(() => {
+    completeWarmupLesson(rawLesson);
+    const next = getNextLesson(rawLesson.id);
+    if (next) {
+      handleSelectLesson(next);
     }
-  };
+  }, [completeWarmupLesson, handleSelectLesson, rawLesson]);
 
   const finalizeExamSession = useCallback(
     (evalMap: Record<string, NoteEvaluation>, finalMaxStreak: number) => {
@@ -909,6 +1029,9 @@ function AuthenticatedStudioWorkspace({
             lastLoopCountRef.current = loopIdx;
             if (mode === 'guide' || mode === 'loop') {
               setCompletedTasks((prev) => new Set(prev).add(mode));
+              if (rawLesson.skipExam) {
+                completeWarmupLesson(rawLesson);
+              }
             }
             if (mode === 'loop') {
               latencySampledNotesRef.current.clear();
@@ -922,6 +1045,11 @@ function AuthenticatedStudioWorkspace({
                   ? tr(
                       `Tempo raised to ${bumpedBpm} BPM. Keep playing!`,
                       `템포가 ${bumpedBpm} BPM으로 올라갔어요. 이어서 연주해 보세요.`
+                    )
+                  : lesson.skipExam
+                  ? tr(
+                      'Warm-up complete! Keep repeating or move straight to the next lesson.',
+                      '워밍업 완주 완료! 더 반복하거나 바로 다음 레슨으로 넘어가세요.'
                     )
                   : tr(
                       'Great groove! Keep repeating or take the passing exam.',
@@ -946,6 +1074,7 @@ function AuthenticatedStudioWorkspace({
       ampPreset,
       autoSpeedUp,
       bpm,
+      completeWarmupLesson,
       enableBackingChords,
       enableDrumsAndBass,
       enableGuideGuitar,
@@ -955,6 +1084,7 @@ function AuthenticatedStudioWorkspace({
       flushAdaptiveLatency,
       lesson,
       loopRangeBars,
+      rawLesson,
       tr,
     ]
   );
@@ -999,6 +1129,10 @@ function AuthenticatedStudioWorkspace({
 
   const handlePracticeModeChange = useCallback(
     (mode: PracticeMode) => {
+      if (mode === 'exam' && rawLesson.skipExam) {
+        handleAdvanceToNextLesson();
+        return;
+      }
       resetSessionState();
       setPracticeMode(mode);
       trackStudioEvent('practice_mode_started', {
@@ -1071,8 +1205,10 @@ function AuthenticatedStudioWorkspace({
       enableMetronome,
       examAutoStart,
       examCountInBars,
+      handleAdvanceToNextLesson,
       isAudioRunning,
       lesson.id,
+      rawLesson.skipExam,
       resetSessionState,
       startTransportForMode,
       tr,
@@ -1292,10 +1428,18 @@ function AuthenticatedStudioWorkspace({
             hadSilence: false,
           };
           setCompletedTasks((prev) => new Set(prev).add('wait'));
+          if (rawLesson.skipExam) {
+            completeWarmupLesson(rawLesson);
+          }
           setFeedbackBanner({
             result: 'perfect',
             title: tr('Step-by-Step Complete', '한 음씩 따라치기 완료'),
-            detail: tr('Now try playing along in tempo.', '이제 템포에 맞춰 완주해 보세요.'),
+            detail: rawLesson.skipExam
+              ? tr(
+                  'Try playing along in tempo, or continue straight to the next lesson.',
+                  '템포에 맞춰 완주해 보거나 바로 다음 레슨으로 넘어가세요.'
+                )
+              : tr('Now try playing along in tempo.', '이제 템포에 맞춰 완주해 보세요.'),
           });
           setActiveNoteIndex(0);
         }
@@ -1667,6 +1811,7 @@ function AuthenticatedStudioWorkspace({
     audioConfig.latencyOffsetMs,
     audioConfig.noiseGateDb,
     bpm,
+    completeWarmupLesson,
     earCopyHintLevel,
     earCopyUnlockedIndices,
     examCountInBars,
@@ -1680,6 +1825,7 @@ function AuthenticatedStudioWorkspace({
     livePitch,
     loopRangeBars,
     practiceMode,
+    rawLesson,
     startTransportForMode,
     tr,
   ]);
@@ -1857,7 +2003,7 @@ function AuthenticatedStudioWorkspace({
         },
       ];
     }
-    return [
+    const standardTasks = [
       {
         mode: 'guide' as PracticeMode,
         label: tr('Listen to Demo', '소리 들어보기'),
@@ -1879,7 +2025,10 @@ function AuthenticatedStudioWorkspace({
         hint: tr('Unlock next lesson', '다음 단계 해금'),
       },
     ];
-  }, [bpm, lesson.supportsEarCopy, lesson.supportsJam, tr]);
+    return lesson.skipExam
+      ? standardTasks.filter((t) => t.mode !== 'exam')
+      : standardTasks;
+  }, [bpm, lesson.skipExam, lesson.supportsEarCopy, lesson.supportsJam, tr]);
 
   // Primary Action Button Label & Handler (One Clear CTA per Screen)
   const primaryCta = useMemo(() => {
@@ -1896,6 +2045,12 @@ function AuthenticatedStudioWorkspace({
       };
     }
     if (practiceMode === 'loop') {
+      if (completedTasks.has('loop') && lesson.skipExam && nextLesson) {
+        return {
+          label: tr(`Next Lesson (${nextLesson.code})`, `다음 레슨 (${nextLesson.code}) 이동`),
+          onClick: handleAdvanceToNextLesson,
+        };
+      }
       if (completedTasks.has('loop') && !isPlaying) {
         return {
           label: tr('Take Passing Exam', '통과 테스트 보기'),
@@ -1917,7 +2072,19 @@ function AuthenticatedStudioWorkspace({
       label: isPlaying ? tr('Stop', '정지') : tr('Play Backing', '반주 재생'),
       onClick: toggleTransport,
     };
-  }, [completedTasks, handlePracticeModeChange, isPlaying, lesson.supportsEarCopy, lesson.supportsJam, practiceMode, toggleTransport, tr]);
+  }, [
+    completedTasks,
+    handleAdvanceToNextLesson,
+    handlePracticeModeChange,
+    isPlaying,
+    lesson.skipExam,
+    lesson.supportsEarCopy,
+    lesson.supportsJam,
+    nextLesson,
+    practiceMode,
+    toggleTransport,
+    tr,
+  ]);
 
   // Concise 1-line guidance for current note
   const activeNote = lesson.notes[activeNoteIndex];
@@ -2054,7 +2221,7 @@ function AuthenticatedStudioWorkspace({
             </motion.h1>
 
             <div className="flex items-center gap-2 shrink-0">
-              {lastTelemetry && (
+              {lastTelemetry && lastTelemetry.lessonId === lesson.id && !lesson.skipExam && (
                 <Button
                   type="button"
                   size="sm"
@@ -2064,6 +2231,21 @@ function AuthenticatedStudioWorkspace({
                   {tr(`Last Result (${lastTelemetry.score})`, `최근 결과 (${lastTelemetry.score}점)`)}
                 </Button>
               )}
+              {lesson.skipExam &&
+                nextLesson &&
+                !(practiceMode === 'loop' && completedTasks.has('loop')) && (
+                  <Button
+                    type="button"
+                    size="sm"
+                    variant="outline"
+                    onClick={handleAdvanceToNextLesson}
+                  >
+                    <span>
+                      {tr(`Next Lesson (${nextLesson.code})`, `다음 레슨 (${nextLesson.code})`)}
+                    </span>
+                    <ChevronRight className="w-3.5 h-3.5 ml-1" />
+                  </Button>
+                )}
               <Button type="button" size="sm" onClick={primaryCta.onClick}>
                 {primaryCta.label}
               </Button>
@@ -2361,6 +2543,38 @@ function AuthenticatedStudioWorkspace({
               })}
             </div>
 
+            {lesson.skipExam && nextLesson && (
+              <div className="pt-2.5 border-t border-border space-y-2">
+                <p className="text-[11px] leading-relaxed text-muted-foreground">
+                  {tr(
+                    'Warm-up lesson · Move on anytime without an exam',
+                    '입문 워밍업 레슨 · 테스트 없이 언제든 다음 단계로 넘어갈 수 있어요'
+                  )}
+                </p>
+                <Button
+                  type="button"
+                  size="sm"
+                  variant={
+                    completedTasks.has('loop') ||
+                    completedTasks.has('wait') ||
+                    Boolean(progress.lessonRecords[lesson.id]?.completed)
+                      ? 'default'
+                      : 'secondary'
+                  }
+                  onClick={handleAdvanceToNextLesson}
+                  className="w-full justify-between text-xs"
+                >
+                  <span>
+                    {tr(
+                      `Continue to Lesson ${nextLesson.code}`,
+                      `다음 레슨으로 넘어가기 (${nextLesson.code})`
+                    )}
+                  </span>
+                  <ChevronRight className="w-3.5 h-3.5" />
+                </Button>
+              </div>
+            )}
+
             {/* Judgment Precision Selector appears cleanly ONLY when Exam is selected */}
             {practiceMode === 'exam' && (
               <div className="pt-2 border-t border-border space-y-1.5">
@@ -2446,17 +2660,6 @@ function AuthenticatedStudioWorkspace({
             <p className="text-xs leading-relaxed text-foreground/90">
               {currentFocusSentence}
             </p>
-            {lesson.id === 'm1-1' && (
-              <div className="rounded-lg border border-amber-500/35 bg-amber-500/8 px-2.5 py-2 text-[11px] leading-relaxed text-foreground/90">
-                <span className="font-semibold text-foreground">
-                  {tr('Mute Required:', '개방현 뮤트 필수:')}
-                </span>
-                {tr(
-                  ' Damp the previous open string before picking the next — unmuted resonance makes passing the test difficult.',
-                  ' 이전 개방현을 뮤트하지 않으면 잔향이 겹쳐 테스트 통과가 어렵습니다. 다음 줄을 치기 직전 왼손이나 오른손 손날로 이전 줄 울림을 멈춰주세요.'
-                )}
-              </div>
-            )}
           </div>
 
           {/* BOTTOM RIGHT: Lesson Guide Entry Card */}

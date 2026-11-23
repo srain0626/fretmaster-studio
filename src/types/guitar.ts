@@ -119,6 +119,7 @@ export interface Lesson {
   notes: NoteEvent[];
   supportsEarCopy?: boolean;
   supportsJam?: boolean;
+  skipExam?: boolean;
   jamPrompt?: string;
 }
 

@@ -107,7 +107,7 @@ export const LESSONS_EN: Record<string, LessonTranslation> = {
       thumbPosition:
         'Drape left fingers lightly across strings to mute; rest right palm edge gently near the bridge saddles.',
       leftHandTip:
-        'Unmuted open strings overlap and make pitch recognition and passing the exam difficult. Lightly touch the previously rung string with your left fingers or right palm edge as you move to the next string.',
+        'Open strings ring out for a long time. Lightly touch the previously played string with your left fingers or right palm edge as you move to the next string for cleaner tone and pitch tracking.',
       rightHandTip:
         'Tilt the pick edge ~45 degrees to the string so Down (D) and Up (U) strokes glide cleanly like a pendulum.',
       commonMistake:

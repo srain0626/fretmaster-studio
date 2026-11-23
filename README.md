@@ -119,7 +119,7 @@ flowchart TB
 | Capability | Technical Implementation &amp; Learning Experience |
 | :--- | :--- |
 | **Bilingual EN / KO Localization** | Automatic OS/browser language detection (`navigator.language`) with an instant **Auto / EN / 한국어** switcher in the sidebar (`fretmaster_locale`), translating all UI controls, 39 lessons, 230+ coaching notes, and SVG animations live |
-| **Low-Latency YIN DSP Engine** | `128-sample AudioWorkletProcessor` running off the main thread (`68–1320 Hz`, `±1 cent` parabolic interpolation), RMS + high-frequency transient onset detection, channel routing (`Ch1 / Ch2 / Mono`), noise gate, and optional local **ASIO Bridge (`ws://127.0.0.1:9420`)** |
+| **Low-Latency YIN + Polyphonic FFT Engine** | `4096-sample` YIN ring buffer (`65–1450 Hz`, `2*tau` subharmonic guard) + `8192-point` FFT chord-strum detection (`MIDI 40..84`) inside an off-main-thread `AudioWorkletProcessor`, channel routing (`Ch1 / Ch2 / Mono`), Peak/Clip meter, 1-click Acoustic Loopback Ping, and optional local **ASIO Bridge (`ws://127.0.0.1:9420`)** |
 | **4-Tier Progressive Judgment** | **Relaxed** (`±110ms / ±45c`) → **Standard** (`±65ms / ±30c`, unlocks next lesson) → **Tight** (`±35ms / ±18c`) → **Studio Master** (`±18ms / ±10c`, blind playthrough with fretboard hints hidden) |
 | **Remotion Explainer Animations** | Auto-played on lesson entry and always reachable from the bottom-right **Lesson Guide**: **11 Harmony visuals** &amp; **8 Biomechanical Posture scenes** with `0.75x` slow motion, timeline scrubbing, and synchronized Web Audio cues |
 | **Web Audio Guitar Synth &amp; Backing** | Dual-oscillator/filter electric guitar synthesizer (`Clean`, `Crunch`, `Lead` tube-saturation curves) + 25ms lookahead multitrack transport (Drums, Bass, Chord Comping, Metronome, Wait-for-Note mode, loop range, `+5 BPM` auto-ramp) |
@@ -197,23 +197,25 @@ Beginners can progress linearly through passing exams (`Standard` tier), or flip
 
 ## Roadmap
 
-Built from `v0.1` through the `v0.3.0` polyphonic chord & CI release, FretMaster Studio grows alongside contributors toward a full open-source electric guitar learning ecosystem. See the complete milestone breakdown in **[ROADMAP.md](ROADMAP.md)**.
+Built from `v0.1` through the `v0.3.1` polyphonic chord, learner-first conversion landing, and funnel analytics baseline, FretMaster Studio grows alongside contributors toward a complete electric guitar learning ecosystem. See the full milestone breakdown in **[ROADMAP.md](ROADMAP.md)**.
 
 ```mermaid
 flowchart LR
-    V2["v0.1 – v0.2.6 (Shipped)\n39 Lessons · 4096 YIN DSP\nCount-In · Peak/Clip Meter\nAdaptive Latency · GTM"] --> V3["v0.3.0 (Current)\nPolyphonic Chord Detection (#4)\nCI DSP Tests & Audio Ping (#2)\nGTM Funnel Telemetry"]
-    V3 --> V4["v0.4.0\nHistory Charts & Drill Queue (#5)\nDrop D / Eb Tunings (#3)\nMute & Vibrato Coaching"]
+    V2["v0.1 – v0.2.6 (Shipped)\n39 Lessons · 4096 YIN DSP\nCount-In · Peak/Clip Meter\nAdaptive Latency · OAuth"] --> V3["v0.3.0 – v0.3.1 (Current)\nPolyphonic Chord Detection (#4)\nCI DSP Tests & Audio Ping (#2)\nLearner Landing & Admin Telemetry"]
+    V3 --> V4["v0.4.0 (Next)\nHistory Charts & Drill Queue (#5)\nDrop D / Eb & Capo (#3)\nGuest Sandbox · Mute/Vibrato DSP"]
     V4 --> V5["v0.5.0\nNative Rust ASIO Bridge (#1)\nIR Cab Tone & Sampled Groove"]
-    V5 --> V6["v1.0.0\nCustom TAB Editor & Lesson PRs (#6)\nTablet Landscape PWA"]
+    V5 --> V6["v0.6.0\nModule 10 Barre Chords & CAGED\nGenre Etudes & 12-Key Jam"]
+    V6 --> V10["v1.0.0\nCustom TAB Editor & Lesson PRs (#6)\nTablet Landscape & Offline PWA"]
 ```
 
 | Milestone | Focus | Planned Deliverables |
 | :--- | :--- | :--- |
-| **v0.1 – v0.2.6** *(Shipped)* | **Core Studio + Real Guitar UX** | 39 bilingual lessons, 4096-sample YIN DSP, context unison mapping, exam count-in & guitar auto-start, Peak/Clip gain meter, visual latency studio & per-bar adaptive calibration, Supabase OAuth sync |
-| **v0.3.0** *(Current)* | **Polyphonic Chords, CI & Telemetry** | 8192-point FFT chord-strum detection (`#4`), Node test suite (`tests/*.test.mjs`) + GitHub Actions CI + 1-click Acoustic Loopback Ping (`#2`), privacy-safe GTM learning funnel events |
-| **v0.4.0** | **Practice Retention & Tunings** | History charts & weak-bar adaptive drill queue (`#5`), `Drop D` / `Eb Standard` / `Open G` alternate tunings (`#3`), live muting & vibrato coaching |
-| **v0.5.0** | **Hardware Ecosystem & Backing** | Open-source local **ASIO / CoreAudio WebSocket Bridge (`:9420`)** daemon in Rust (`#1`), cabinet IR tone monitoring & sampled groove backing |
-| **v1.0.0** | **Creator Tools & Mobile PWA** | Custom TAB & loop editor, community lesson PR packs (`#6`), tablet landscape studio layout & offline PWA sync |
+| **v0.1 – v0.2.6** *(Shipped)* | **Core Studio + Real Guitar UX** | 39 bilingual lessons, 4096-sample YIN DSP, context unison mapping, exam count-in & guitar auto-start, Peak/Clip gain meter, visual latency studio & per-bar adaptive calibration, 4-step onboarding, Supabase OAuth sync |
+| **v0.3.0 – v0.3.1** *(Current)* | **Polyphonic Chords, CI & Conversion UX** | 8192-point FFT chord-strum detection (`#4`), Node test suite (`tests/*.test.mjs`) + GitHub Actions CI + 1-click Acoustic Loopback Ping (`#2`), learner-focused landing with `?lesson=` deep-linking, first-party Supabase funnel telemetry & `/admin` RBAC analytics console, exam-free Lesson `1-1` open-string warm-up progression |
+| **v0.4.0** *(Next)* | **Practice Retention, Guest Sandbox & Tunings** | History charts, spaced review & weak-bar drill queue (`#5`), 1-lesson frictionless guest sandbox mode, `Drop D` / `Eb Standard` / `Open G` + virtual Capo (`#3`), live single-note muting & vibrato contour coaching |
+| **v0.5.0** | **Hardware Ecosystem & Studio Sound** | Open-source local **ASIO / CoreAudio WebSocket Bridge (`:9420`)** daemon in Rust (`#1`), Web Audio cabinet IR + direct headphone monitoring, velocity-layered sampled guitar/drum/bass backing |
+| **v0.6.0** | **Barre Chords & Genre Etude Packs** | Module 10 Barre Chord survival (`F`/`Bm` E & A shapes) + CAGED connectors, Funk/City-Pop/J-Rock/K-Indie bilingual etude packs, 12-key backing jam transposition |
+| **v1.0.0** | **Creator Tools & Tablet Offline PWA** | Custom TAB & loop editor + MusicXML import/export, community lesson PR packs (`#6`), tablet landscape studio layout & offline-first PWA sync |
 
 ---
 
@@ -327,7 +329,8 @@ This repository ships with a **Low-Token Modular Documentation System** specific
 | Lessons, Modules &amp; Curriculum | [`docs/03-CURRICULUM.md`](docs/03-CURRICULUM.md) | `~52L` | All 39 lesson IDs, `buildNotes` factory, progressive unlock &amp; exam passing rules |
 | Audio DSP, Synth &amp; Judgment Tiers | [`docs/04-AUDIO-DSP.md`](docs/04-AUDIO-DSP.md) | `~52L` | `AudioWorklet` YIN pitch/onset DSP, ASIO bridge (`:9420`), `JUDGMENT_TIERS` |
 | Remotion Motion &amp; Audio Cues | [`docs/05-ANIMATIONS.md`](docs/05-ANIMATIONS.md) | `~59L` | `ExplainerVideoShell` `resetKey`, 11 Harmony / 8 Posture scenes, `720x320` SVG safe bounds |
-| CLI Commands, PowerShell &amp; QA | [`docs/06-MAINTENANCE-RUNBOOK.md`](docs/06-MAINTENANCE-RUNBOOK.md) | `~47L` | Windows PowerShell `;` chaining, top 6 common traps, live browser QA checklist |
+| CLI Commands, PowerShell &amp; QA | [`docs/06-MAINTENANCE-RUNBOOK.md`](docs/06-MAINTENANCE-RUNBOOK.md) | `~50L` | Windows PowerShell `;` chaining, unit test &amp; emoji gates, live browser QA checklist |
+| Auth, Landing, Cloud Sync &amp; Admin | [`docs/07-AUTH-AND-DATABASE.md`](docs/07-AUTH-AND-DATABASE.md) | `~55L` | Public `/` landing &amp; `?lesson=` deep-links, `/studio` OAuth gate, `/admin` RBAC &amp; PostgreSQL RLS |
 
 ### Non-Negotiable Agent Guardrails
 

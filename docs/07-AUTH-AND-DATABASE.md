@@ -4,8 +4,9 @@
 
 | Route | Purpose | Access | SEO |
 | :--- | :--- | :--- | :--- |
-| `/` (`src/app/page.tsx`) | Bilingual EN/KO public Landing Page, Studio previews, 39-lesson curriculum explorer, Google Sign-In CTA | Public | Indexed (`canonical: '/'`, OpenGraph `/og-thumbnail.jpg`, JSON-LD) |
-| `/studio` (`src/app/studio/page.tsx`) | Full 3-column FretMaster Studio (`FretMasterStudioClient.tsx`) | Authenticated required (`AuthGateCard` fallback when signed out) | `noindex, nofollow` |
+| `/` (`src/app/page.tsx`) | Bilingual EN/KO learner-focused Landing Page, audible fretboard/coaching demos, 39-lesson launcher (`?lesson=<id>`), Google Sign-In CTA | Public | Indexed (`canonical: '/'`, OpenGraph `/og-thumbnail.jpg`, JSON-LD) |
+| `/studio` (`src/app/studio/page.tsx`) | Full 3-column FretMaster Studio (`FretMasterStudioClient.tsx`); honors optional `?lesson=<id>` deep-link (enables `freeExploreMode` when jumping ahead) | Authenticated required (`AuthGateCard` fallback preserving `?lesson=`) | `noindex, nofollow` |
+| `/admin` (`src/app/admin/page.tsx`) | Admin-only table analytics & funnel console (`AdminDashboardClient.tsx`, `/api/admin/*`) | Authenticated + `is_admin_user()` RBAC | `noindex, nofollow`, disallowed in `robots.ts` |
 | `/auth/callback` (`src/app/auth/callback/route.ts`) | Supabase PKCE OAuth code exchange handler (`next` sanitized, default `'/studio'`) | Public callback | Excluded |
 
 ## Next.js 16 Session Refresh (`src/proxy.ts`)
@@ -21,6 +22,7 @@
 | `public.profiles` | Email, full name, avatar URL, preferred locale/theme | `auth.uid() = id` |
 | `public.user_progress` | `lesson_records`, `skills`, streaks, `free_explore_mode`, `last_lesson_id`, `audio_config` | `auth.uid() = user_id` |
 | `public.practice_sessions` | Append-only completed Exam telemetry log | `auth.uid() = user_id` |
+| `public.analytics_events` | First-party funnel & page-view telemetry (`/api/telemetry`) | Insert allowed; admin-only read via `is_admin_user()` / `get_admin_dashboard_stats()` |
 
 - `handle_new_user()` trigger on `auth.users` insert automatically creates `profiles` and `user_progress` rows.
 

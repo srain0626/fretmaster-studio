@@ -132,6 +132,7 @@ export function CurriculumSidebar({
     const globalIdx = ALL_LESSONS.findIndex((l) => l.id === lesson.id);
     if (globalIdx <= 0) return true;
     const prevLesson = ALL_LESSONS[globalIdx - 1];
+    if (prevLesson.skipExam) return true;
     return Boolean(progress.lessonRecords[prevLesson.id]?.completed);
   };
 

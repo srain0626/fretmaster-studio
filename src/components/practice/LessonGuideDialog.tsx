@@ -184,18 +184,18 @@ export function LessonGuideDialog({
                 <span className="text-muted-foreground"> — {lesson.postureGuide.fixAction}</span>
               </div>
 
-              {lesson.id === 'm1-1' && (
-                <div className="rounded-lg border border-amber-500/35 bg-amber-500/8 px-3.5 py-2.5 text-xs leading-relaxed">
+              {lesson.skipExam && (
+                <div className="rounded-lg border border-primary/30 bg-accent-soft/45 px-3.5 py-2.5 text-xs leading-relaxed">
                   <div className="font-semibold text-foreground mb-1">
                     {tr(
-                      'Exam Passing Tip · Mute Previous Open Strings',
-                      '테스트 통과 핵심 · 이전 개방현 뮤트 필수'
+                      'Warm-Up Lesson · Proceed Without an Exam',
+                      '입문 워밍업 · 테스트 없이 편하게 넘어가세요'
                     )}
                   </div>
                   <p className="text-muted-foreground">
                     {tr(
-                      'Open strings sustain loudly on electric guitar. If you do not mute the previous string before picking the next one, residual low-string resonance overlaps the new pitch and makes passing the test difficult. Lightly damp the previous string with your left fingers or right palm edge on every string change.',
-                      '개방현은 울림이 강하고 길게 남아, 다음 줄을 치기 전에 이전 줄을 뮤트하지 않으면 저음 잔향이 겹쳐 피치 인식과 테스트 통과가 어렵습니다. 줄을 옮길 때마다 왼손가락이나 오른손 손날로 이전 줄 울림을 꼭 멈춰주세요.'
+                      'This first lesson has no passing exam — feel the resonance of the 6 open strings and Down/Up picking, then continue straight to Lesson 1-2 whenever you are ready. Tip: lightly touching the previous string reduces leftover ringing for a cleaner tone.',
+                      '첫 번째 레슨은 별도 통과 테스트 없이 여섯 개방현의 울림과 다운/업 피킹 감각만 익히고 언제든 1-2로 넘어갈 수 있습니다. 줄을 옮길 때 이전 줄을 살짝 건드려 잔향을 줄여 주면 소리가 한결 깔끔해집니다.'
                     )}
                   </p>
                 </div>

@@ -420,8 +420,8 @@ export function StudioOnboardingDialog({
                     </div>
                     <p className="text-[11px] text-muted-foreground leading-relaxed">
                       {tr(
-                        'Pass each test in order from Lesson 1-1 to build rock-solid fundamentals.',
-                        '1-1부터 순서대로 테스트를 통과하며 기초와 화성 감각을 탄탄히 쌓습니다.'
+                        'Start comfortably with the 1-1 warm-up, then unlock each stage step by step to build solid fundamentals.',
+                        '1-1 워밍업으로 가볍게 시작한 뒤 단계별로 해금하며 기초와 화성 감각을 탄탄히 쌓습니다.'
                       )}
                     </p>
                   </button>
