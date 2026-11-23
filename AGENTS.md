@@ -18,4 +18,4 @@ Start with **`docs/INDEX.md`** (~100 lines) and open **only** the task module yo
 - Remotion explainer videos & audio cues -> `docs/05-ANIMATIONS.md`
 - CLI commands, PowerShell rules, traps, QA -> `docs/06-MAINTENANCE-RUNBOOK.md`
 
-Critical invariants: zero Unicode emojis/dingbats (`\u2600-\u27BF`), zero neon glows, zero lesson subtitles, maintain Light & Dark contrast via CSS tokens (`var(--*)`), verify changes with `npm run build`.
+Critical invariants: zero Unicode emojis/dingbats (`\u2600-\u27BF`), zero neon glows, zero lesson subtitles, maintain Light & Dark contrast via CSS tokens (`var(--*)`), verify changes with `npm run build`, and when committing changes, always push them to the remote repository (`git push origin main`) as well.
