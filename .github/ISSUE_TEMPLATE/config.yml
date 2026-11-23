@@ -1,0 +1,8 @@
+blank_issues_enabled: true
+contact_links:
+  - name: Live Studio Deployment
+    url: https://fretmaster-studio.vercel.app
+    about: Test behavior against the current production build before filing an issue
+  - name: Milestone Roadmap
+    url: https://github.com/srain0626/fretmaster-studio/blob/main/ROADMAP.md
+    about: Check planned features across v0.4.0 through v1.0.0

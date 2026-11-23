@@ -1,0 +1,39 @@
+name: Feature / Curriculum Proposal
+description: Propose a new guitar lesson, Remotion motion guide, DSP capability, or UX improvement
+title: "[Feat]: "
+labels: ["enhancement"]
+body:
+  - type: dropdown
+    id: area
+    attributes:
+      label: Category
+      options:
+        - Curriculum / New Lesson Etude
+        - Audio DSP / Pitch & Chord Evaluation
+        - Native ASIO / CoreAudio Bridge
+        - Remotion Harmony / Posture Animation
+        - Studio UI / Practice Workflow
+    validations:
+      required: true
+
+  - type: textarea
+    id: problem
+    attributes:
+      label: Problem or Practice Pain Point
+      description: What musical, physical, or technical friction does this solve for a guitar learner?
+    validations:
+      required: true
+
+  - type: textarea
+    id: proposal
+    attributes:
+      label: Proposed Design
+      description: Describe the expected behavior, target module/phase, or technical approach.
+    validations:
+      required: true
+
+  - type: textarea
+    id: context
+    attributes:
+      label: Additional Context
+      description: Related roadmap items (see ROADMAP.md), audio edge cases, or visual references.

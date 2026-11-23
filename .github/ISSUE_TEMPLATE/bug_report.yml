@@ -1,0 +1,63 @@
+name: Bug Report
+description: Report a pitch/chord judgment bug, audio latency issue, or UI defect
+title: "[Bug]: "
+labels: ["bug"]
+body:
+  - type: textarea
+    id: summary
+    attributes:
+      label: What happened?
+      description: Concise description of the bug and how it differs from expected behavior.
+    validations:
+      required: true
+
+  - type: input
+    id: lesson
+    attributes:
+      label: Route or Lesson ID
+      description: Example - `/studio` Lesson `3-3` (Exam mode, Standard tier) or `/` landing page.
+      placeholder: "m3-3 / Exam / Standard"
+
+  - type: dropdown
+    id: pipeline
+    attributes:
+      label: Audio Input Pipeline
+      options:
+        - Not audio-related
+        - AudioWorklet (128-sample default)
+        - AnalyserNode fallback
+        - Local ASIO Bridge (ws://127.0.0.1:9420)
+    validations:
+      required: true
+
+  - type: input
+    id: hardware
+    attributes:
+      label: Audio Interface / Microphone & Channel Mode
+      description: Example - Focusrite Scarlett 2i2 (Hi-Z Input 1, Ch 1 selected, 48 kHz) or MacBook Pro built-in mic.
+      placeholder: "Scarlett Solo Gen 4, Ch 2, 48 kHz"
+
+  - type: input
+    id: env
+    attributes:
+      label: OS, Browser & Theme
+      placeholder: "Windows 11, Chrome 136, Dark mode (KO)"
+    validations:
+      required: true
+
+  - type: textarea
+    id: repro
+    attributes:
+      label: Steps to Reproduce
+      value: |
+        1.
+        2.
+        3.
+    validations:
+      required: true
+
+  - type: textarea
+    id: logs
+    attributes:
+      label: Diagnostic Output / Screenshots
+      description: Paste sanitized output from ErrorReportDialog, browser console errors, or attach screenshots.
