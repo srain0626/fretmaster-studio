@@ -11,6 +11,7 @@ const sampleRate = 48000;
 describe('Polyphonic Worklet FFT & Chord-Strum Detection', () => {
   const harness = createWorkletHarness(sampleRate);
   const {
+    LowLatencyGuitarAudioEngine,
     POLY_SPECTRUM_MIN_MIDI,
     POLY_SPECTRUM_COUNT,
     evaluatePolyphonicChord,
@@ -195,5 +196,201 @@ describe('Polyphonic Worklet FFT & Chord-Strum Detection', () => {
     const dirtyC5 = analyzeSignal([40, 48, 55, 60], [1.6, 1.0, 1.0, 1.0]);
     const res = evaluatePolyphonicChord(c5Shape, dirtyC5.noteSpectrum, dirtyC5.chroma, 'standard');
     assert.equal(res.unmutedStringWarning, true, 'Loud unmuted open 6E string must trigger warning on C5');
+  });
+
+  test('isolates Lesson 3-1 and neighboring power chords without cross-passing', () => {
+    const openMidi = { 6: 40, 5: 45, 4: 50, 3: 55, 2: 59, 1: 64 };
+    const chords = {
+      A5: [
+        { string: 6, fret: 5, finger: 1, intervalLabel: 'R' },
+        { string: 5, fret: 7, finger: 3, intervalLabel: '5' },
+        { string: 4, fret: 7, finger: 4, intervalLabel: 'R' },
+      ],
+      F5: [
+        { string: 6, fret: 1, finger: 1, intervalLabel: 'R' },
+        { string: 5, fret: 3, finger: 3, intervalLabel: '5' },
+        { string: 4, fret: 3, finger: 4, intervalLabel: 'R' },
+      ],
+      C5: [
+        { string: 5, fret: 3, finger: 1, intervalLabel: 'R' },
+        { string: 4, fret: 5, finger: 3, intervalLabel: '5' },
+        { string: 3, fret: 5, finger: 4, intervalLabel: 'R' },
+      ],
+      G5: [
+        { string: 6, fret: 3, finger: 1, intervalLabel: 'R' },
+        { string: 5, fret: 5, finger: 3, intervalLabel: '5' },
+        { string: 4, fret: 5, finger: 4, intervalLabel: 'R' },
+      ],
+      E5: [
+        { string: 6, fret: 0, finger: 0, intervalLabel: 'R' },
+        { string: 5, fret: 2, finger: 2, intervalLabel: '5' },
+        { string: 4, fret: 2, finger: 3, intervalLabel: 'R' },
+      ],
+      Fs5: [
+        { string: 6, fret: 2, finger: 1, intervalLabel: 'R' },
+        { string: 5, fret: 4, finger: 3, intervalLabel: '5' },
+        { string: 4, fret: 4, finger: 4, intervalLabel: 'R' },
+      ],
+      Bb5: [
+        { string: 6, fret: 6, finger: 1, intervalLabel: 'R' },
+        { string: 5, fret: 8, finger: 3, intervalLabel: '5' },
+        { string: 4, fret: 8, finger: 4, intervalLabel: 'R' },
+      ],
+      D5: [
+        { string: 5, fret: 5, finger: 1, intervalLabel: 'R' },
+        { string: 4, fret: 7, finger: 3, intervalLabel: '5' },
+        { string: 3, fret: 7, finger: 4, intervalLabel: 'R' },
+      ],
+      E5_7f: [
+        { string: 5, fret: 7, finger: 1, intervalLabel: 'R' },
+        { string: 4, fret: 9, finger: 3, intervalLabel: '5' },
+        { string: 3, fret: 9, finger: 4, intervalLabel: 'R' },
+      ],
+    };
+
+    for (const [playedName, playedShape] of Object.entries(chords)) {
+      const midis = playedShape.map((cn) => openMidi[cn.string] + cn.fret);
+      const frame = analyzeSignal(midis);
+      for (const [targetName, targetShape] of Object.entries(chords)) {
+        for (const tier of ['relaxed', 'standard']) {
+          const polyRes = evaluatePolyphonicChord(
+            targetShape,
+            frame.noteSpectrum,
+            frame.chroma,
+            tier
+          );
+          const noteTarget = {
+            id: `iso-${playedName}-${targetName}-${tier}`,
+            string: targetShape[0].string,
+            fret: targetShape[0].fret,
+            finger: targetShape[0].finger,
+            beatStart: 0,
+            durationBeats: 2,
+            chordNotes: targetShape,
+          };
+          const hit = evaluateNoteHit(noteTarget, 0, 0, tier, 0, {
+            noteSpectrum: frame.noteSpectrum,
+            chroma: frame.chroma,
+            source: 'worklet',
+          });
+          if (playedName === targetName) {
+            assert.equal(polyRes.passed, true, `${playedName} should pass itself on ${tier}`);
+            assert.notEqual(hit.result, 'miss', `${playedName} evaluateNoteHit should pass itself on ${tier}`);
+          } else {
+            assert.equal(
+              polyRes.passed,
+              false,
+              `Playing ${playedName} must NOT pass ${targetName} on ${tier}`
+            );
+            assert.equal(
+              hit.result,
+              'miss',
+              `Playing ${playedName} must evaluate as miss for ${targetName} on ${tier}`
+            );
+          }
+        }
+      }
+    }
+  });
+
+  test('rejects broadband pick scratch / transient noise burst across power chords', () => {
+    const burst = new Float32Array(4096);
+    let seed = 1337;
+    for (let i = 3840; i < 4096; i++) {
+      seed = (seed * 1664525 + 1013904223) >>> 0;
+      burst[i] = ((seed / 0xffffffff) - 0.5) * 0.4;
+    }
+    const msgs = harness.feedSignal(burst, 2.5).filter((m) => Array.isArray(m.noteSpectrum));
+    assert.ok(msgs.length > 0);
+    const last = msgs[msgs.length - 1];
+    const a5Shape = [
+      { string: 6, fret: 5, finger: 1, intervalLabel: 'R' },
+      { string: 5, fret: 7, finger: 3, intervalLabel: '5' },
+      { string: 4, fret: 7, finger: 4, intervalLabel: 'R' },
+    ];
+    const f5Shape = [
+      { string: 6, fret: 1, finger: 1, intervalLabel: 'R' },
+      { string: 5, fret: 3, finger: 3, intervalLabel: '5' },
+      { string: 4, fret: 3, finger: 4, intervalLabel: 'R' },
+    ];
+    assert.equal(evaluatePolyphonicChord(a5Shape, last.noteSpectrum, last.chroma, 'relaxed').passed, false);
+    assert.equal(evaluatePolyphonicChord(f5Shape, last.noteSpectrum, last.chroma, 'relaxed').passed, false);
+  });
+
+  test('isolates Lesson 7-3 high triads (Am, F, C, G) cleanly', () => {
+    const openMidi = { 6: 40, 5: 45, 4: 50, 3: 55, 2: 59, 1: 64 };
+    const triads = {
+      Am: [
+        { string: 3, fret: 5, finger: 1, intervalLabel: 'b3' },
+        { string: 2, fret: 5, finger: 1, intervalLabel: '5' },
+        { string: 1, fret: 5, finger: 1, intervalLabel: 'R' },
+      ],
+      F: [
+        { string: 3, fret: 5, finger: 1, intervalLabel: '5' },
+        { string: 2, fret: 6, finger: 2, intervalLabel: 'R' },
+        { string: 1, fret: 5, finger: 1, intervalLabel: '3' },
+      ],
+      C: [
+        { string: 3, fret: 5, finger: 1, intervalLabel: 'R' },
+        { string: 2, fret: 5, finger: 1, intervalLabel: '3' },
+        { string: 1, fret: 8, finger: 4, intervalLabel: 'R' },
+      ],
+      G: [
+        { string: 3, fret: 7, finger: 3, intervalLabel: '5' },
+        { string: 2, fret: 8, finger: 4, intervalLabel: 'R' },
+        { string: 1, fret: 7, finger: 2, intervalLabel: '3' },
+      ],
+    };
+
+    for (const [playedName, playedShape] of Object.entries(triads)) {
+      const midis = playedShape.map((cn) => openMidi[cn.string] + cn.fret);
+      const frame = analyzeSignal(midis);
+      for (const [targetName, targetShape] of Object.entries(triads)) {
+        const res = evaluatePolyphonicChord(targetShape, frame.noteSpectrum, frame.chroma, 'standard');
+        assert.equal(
+          res.passed,
+          playedName === targetName,
+          `Triad ${playedName} against ${targetName} expected ${playedName === targetName}`
+        );
+      }
+    }
+  });
+
+  test('settles polyphonic onset for 36ms before emitting chord spectrum and onset', () => {
+    const engine = new LowLatencyGuitarAudioEngine();
+    const emitted = [];
+    engine.subscribe((d) => emitted.push(d));
+
+    const staleSpectrum = new Array(POLY_SPECTRUM_COUNT).fill(0);
+    staleSpectrum[40 - POLY_SPECTRUM_MIN_MIDI] = 95;
+    staleSpectrum[47 - POLY_SPECTRUM_MIN_MIDI] = 85;
+    staleSpectrum[52 - POLY_SPECTRUM_MIN_MIDI] = 100;
+
+    const settledA5 = new Array(POLY_SPECTRUM_COUNT).fill(0);
+    settledA5[45 - POLY_SPECTRUM_MIN_MIDI] = 95;
+    settledA5[52 - POLY_SPECTRUM_MIN_MIDI] = 80;
+    settledA5[57 - POLY_SPECTRUM_MIN_MIDI] = 100;
+
+    let fakeNow = 2000;
+    const origNow = performance.now.bind(performance);
+    performance.now = () => fakeNow;
+
+    try {
+      engine['handleRawAnalysis'](0, -28, true, 0.1, 'worklet', -20, false, undefined, staleSpectrum);
+      assert.equal(emitted.filter((e) => e.isActive || e.isOnset).length, 0);
+
+      fakeNow += 20;
+      engine['handleRawAnalysis'](0, -26, false, 0.1, 'worklet', -20, false, undefined, staleSpectrum);
+      assert.equal(emitted.filter((e) => e.isActive || e.isOnset).length, 0);
+
+      fakeNow += 20;
+      engine['handleRawAnalysis'](0, -24, false, 0.1, 'worklet', -18, false, undefined, settledA5);
+      const active = emitted.filter((e) => e.isActive);
+      assert.equal(active.length, 1);
+      assert.equal(active[0].isOnset, true);
+      assert.equal(active[0].noteSpectrum[45 - POLY_SPECTRUM_MIN_MIDI], 95);
+    } finally {
+      performance.now = origNow;
+    }
   });
 });

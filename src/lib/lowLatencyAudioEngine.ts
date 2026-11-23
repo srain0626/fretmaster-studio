@@ -38,6 +38,12 @@ import type {
 export const POLY_SPECTRUM_MIN_MIDI = 40;
 export const POLY_SPECTRUM_COUNT = 45;
 
+const ZERO_POLY_SPECTRUM: number[] = new Array(POLY_SPECTRUM_COUNT).fill(0);
+
+function hasTonalPolySpectrum(spec?: number[]): boolean {
+  return Array.isArray(spec) && spec.length === POLY_SPECTRUM_COUNT && spec.some((v) => v >= 35);
+}
+
 export interface JudgmentTierSpec {
   id: JudgmentTier;
   label: string;
@@ -166,6 +172,8 @@ export class LowLatencyGuitarAudioEngine {
   private candidateJumpMidi: number | null = null;
   private candidateJumpCount = 0;
   private pendingOnsetUntilMs = 0;
+  private pendingPolyOnsetReadyMs = 0;
+  private pendingPolyOnsetUntilMs = 0;
   private stableMidiForLegato: number | null = null;
   private legatoHoldMidi: number | null = null;
   private legatoHoldCount = 0;
@@ -682,26 +690,84 @@ export class LowLatencyGuitarAudioEngine {
 
     const binHz = sr / N;
     const halfBins = N >> 1;
+    const minBin = Math.max(2, Math.floor(70 / binHz));
+    const maxBin = Math.min(halfBins - 2, Math.min(1022, Math.ceil(3000 / binHz)));
+    const bandMaxBin = Math.min(maxBin, Math.ceil(1500 / binHz));
+    const mag = new Float32Array(maxBin + 2);
+
+    let sumMag = 0;
+    let cntMag = 0;
+    let maxMag = 0;
+    for (let k = minBin - 1; k <= maxBin + 1; k++) {
+      const m = Math.hypot(re[k], im[k]);
+      mag[k] = m;
+      if (k >= minBin && k <= bandMaxBin) {
+        sumMag += m;
+        cntMag++;
+      }
+      if (m > maxMag) maxMag = m;
+    }
+
+    const crest = cntMag > 0 && sumMag > 1e-9 ? maxMag / (sumMag / cntMag) : 0;
+    const tonalWeight = crest <= 3.2 ? 0 : Math.min(1, (crest - 3.2) / 1.6);
+    if (tonalWeight <= 0 || maxMag < 1e-6) {
+      return {
+        noteSpectrum: [...ZERO_POLY_SPECTRUM],
+        chroma: new Array(12).fill(0),
+      };
+    }
+
+    const peakFreqs: number[] = [];
+    const peakMags: number[] = [];
+    const minPeakMag = maxMag * 0.04;
+    for (let k = minBin; k <= maxBin && peakFreqs.length < 256; k++) {
+      const m0 = mag[k - 1];
+      const m1 = mag[k];
+      const m2 = mag[k + 1];
+      if (m1 >= m0 && m1 >= m2 && m1 >= minPeakMag) {
+        const denom = m0 - 2 * m1 + m2;
+        const delta =
+          Math.abs(denom) > 1e-9
+            ? Math.max(-0.5, Math.min(0.5, (0.5 * (m0 - m2)) / denom))
+            : 0;
+        peakFreqs.push((k + delta) * binHz);
+        peakMags.push(m1 - 0.25 * (m0 - m2) * delta);
+      }
+    }
+
+    const peakAtFreq = (targetFreq: number, maxCents: number) => {
+      let best = 0;
+      for (let p = 0; p < peakFreqs.length; p++) {
+        const cents = 1200 * Math.abs(Math.log2(peakFreqs[p] / targetFreq));
+        if (cents <= maxCents) {
+          const ratio = cents / maxCents;
+          const w = 1 - 0.55 * ratio * ratio;
+          const val = peakMags[p] * w;
+          if (val > best) best = val;
+        }
+      }
+      return best;
+    };
+
     const rawEnergies = new Float32Array(POLY_SPECTRUM_COUNT);
     const rawChroma = new Float32Array(12);
-    let maxE = 1e-6;
-    const bracketMag = (f: number) => {
-      const exact = f / binHz;
-      const b0 = Math.max(1, Math.min(halfBins - 2, Math.floor(exact)));
-      const b1 = b0 + 1;
-      const m0 = Math.hypot(re[b0], im[b0]);
-      const m1 = Math.hypot(re[b1], im[b1]);
-      return m0 > m1 ? m0 : m1;
-    };
+    let maxE = 0;
     for (let idx = 0; idx < POLY_SPECTRUM_COUNT; idx++) {
       const midi = POLY_SPECTRUM_MIN_MIDI + idx;
       const f1 = 440 * Math.pow(2, (midi - 69) / 12);
-      const mag1 = bracketMag(f1);
-      const mag2 = f1 * 2 < sr * 0.45 ? bracketMag(f1 * 2) : 0;
-      const e = Math.sqrt(mag1 * (0.55 * mag1 + 0.45 * mag2));
+      const m1 = peakAtFreq(f1, 54);
+      const m2 = f1 * 2 < 2900 ? peakAtFreq(f1 * 2, 48) : 0;
+      const harmonicCap = midi <= 49 ? 4.0 : 2.5;
+      const e = (m1 > 0 ? 0.58 * m1 + 0.42 * Math.min(m2, m1 * harmonicCap) : 0) * tonalWeight;
       rawEnergies[idx] = e;
       if (e > maxE) maxE = e;
       rawChroma[midi % 12] += e;
+    }
+    if (maxE <= 1e-6) {
+      return {
+        noteSpectrum: [...ZERO_POLY_SPECTRUM],
+        chroma: new Array(12).fill(0),
+      };
     }
     const maxC = Math.max(1e-6, ...rawChroma);
     return {
@@ -808,6 +874,8 @@ export class LowLatencyGuitarAudioEngine {
     this.candidateJumpMidi = null;
     this.candidateJumpCount = 0;
     this.pendingOnsetUntilMs = 0;
+    this.pendingPolyOnsetReadyMs = 0;
+    this.pendingPolyOnsetUntilMs = 0;
     this.stableMidiForLegato = null;
     this.legatoHoldMidi = null;
     this.legatoHoldCount = 0;
@@ -830,11 +898,31 @@ export class LowLatencyGuitarAudioEngine {
     // Preserve a pick attack onset even if the initial attack transient is unpitched (freq=0)
     if (isOnset && rmsDb >= this.config.noiseGateDb) {
       this.pendingOnsetUntilMs = nowMs + 160;
+      this.pendingPolyOnsetReadyMs = nowMs + 36;
+      this.pendingPolyOnsetUntilMs = nowMs + 195;
       this.pitchHistory = [];
       this.candidateJumpMidi = null;
       this.candidateJumpCount = 0;
       this.legatoHoldMidi = null;
       this.legatoHoldCount = 0;
+    }
+
+    const effectiveNoteSpectrum =
+      Array.isArray(noteSpectrum) && noteSpectrum.length === POLY_SPECTRUM_COUNT
+        ? nowMs < this.pendingPolyOnsetReadyMs
+          ? [...ZERO_POLY_SPECTRUM]
+          : noteSpectrum
+        : undefined;
+
+    let polyEffectiveOnset = false;
+    if (
+      this.pendingPolyOnsetUntilMs > 0 &&
+      nowMs >= this.pendingPolyOnsetReadyMs &&
+      nowMs <= this.pendingPolyOnsetUntilMs &&
+      hasTonalPolySpectrum(effectiveNoteSpectrum)
+    ) {
+      polyEffectiveOnset = true;
+      this.pendingPolyOnsetUntilMs = 0;
     }
 
     if (frequency <= 0 || rmsDb < this.config.noiseGateDb || clarity < 0.45) {
@@ -843,12 +931,10 @@ export class LowLatencyGuitarAudioEngine {
         this.resetPitchTrackingState();
       }
       const hasPolyActive =
-        rmsDb >= this.config.noiseGateDb &&
-        Array.isArray(noteSpectrum) &&
-        noteSpectrum.length === POLY_SPECTRUM_COUNT;
+        rmsDb >= this.config.noiseGateDb && hasTonalPolySpectrum(effectiveNoteSpectrum);
       if (
         isClipping ||
-        (hasPolyActive && isOnset) ||
+        (hasPolyActive && polyEffectiveOnset) ||
         this.lastPitch.isActive ||
         nowMs - this.lastUiEmitMs >= 45
       ) {
@@ -859,8 +945,8 @@ export class LowLatencyGuitarAudioEngine {
           peakDb,
           isClipping,
           chroma: hasPolyActive ? chroma : undefined,
-          noteSpectrum: hasPolyActive ? noteSpectrum : undefined,
-          isOnset: hasPolyActive && isOnset,
+          noteSpectrum: hasPolyActive ? effectiveNoteSpectrum : undefined,
+          isOnset: hasPolyActive && polyEffectiveOnset,
           isActive: hasPolyActive,
           timestampMs: nowMs,
           source,
@@ -951,9 +1037,11 @@ export class LowLatencyGuitarAudioEngine {
       }
     }
 
+    const finalOnset = effectiveOnset || polyEffectiveOnset;
+
     // Emit immediately on onset, clipping peak, attack-from-silence, or pitch change; throttle steady sustain to ~45 Hz
     const shouldEmit =
-      effectiveOnset ||
+      finalOnset ||
       isClipping ||
       !this.lastPitch.isActive ||
       this.lastPitch.nearestMidi !== nearestMidi ||
@@ -972,11 +1060,11 @@ export class LowLatencyGuitarAudioEngine {
       peakDb,
       isClipping,
       clarity,
-      isOnset: effectiveOnset,
+      isOnset: finalOnset,
       isActive: true,
       timestampMs: nowMs,
       chroma,
-      noteSpectrum,
+      noteSpectrum: effectiveNoteSpectrum,
       detectedString: guess.string,
       detectedFret: guess.fret,
       source,
@@ -1159,10 +1247,10 @@ export interface PolyphonicChordResult {
 }
 
 const POLY_ENERGY_THRESHOLDS: Record<JudgmentTier, number> = {
-  relaxed: 16,
-  standard: 22,
-  tight: 28,
-  studio: 34,
+  relaxed: 20,
+  standard: 25,
+  tight: 30,
+  studio: 36,
 };
 
 const POLY_MIN_RATIO: Record<JudgmentTier, number> = {
@@ -1198,7 +1286,7 @@ export function evaluatePolyphonicChord(
     if (idx >= 0 && idx < POLY_SPECTRUM_COUNT && idx < noteSpectrum.length) {
       return noteSpectrum[idx];
     }
-    return (chroma?.[midi % 12] ?? 0) * 100;
+    return (chroma?.[((midi % 12) + 12) % 12] ?? 0) * 100;
   };
 
   const uniqueTargetPcs = new Set<number>();
@@ -1207,18 +1295,21 @@ export function evaluatePolyphonicChord(
 
   const targetMidis = chordNotes.map((cn) => {
     const m = getNoteMidi(cn.string, cn.fret);
-    uniqueTargetPcs.add(m % 12);
+    uniqueTargetPcs.add(((m % 12) + 12) % 12);
     return m;
   });
 
   const rootCn = chordNotes.find((cn) => cn.intervalLabel === 'R');
   const rootMidi = rootCn ? getNoteMidi(rootCn.string, rootCn.fret) : Math.min(...targetMidis);
-  const rootPc = rootMidi % 12;
+  const rootPc = ((rootMidi % 12) + 12) % 12;
+  const bassTargetMidi = Math.min(...targetMidis);
+  const maxTargetMidi = Math.max(...targetMidis);
+  const maxStringUsed = Math.max(...chordNotes.map((cn) => cn.string));
 
   for (const m of targetMidis) {
     if (getEnergy(m) >= noteThresh) {
       matchedNotes++;
-      matchedUniquePcs.add(m % 12);
+      matchedUniquePcs.add(((m % 12) + 12) % 12);
     }
   }
 
@@ -1231,7 +1322,7 @@ export function evaluatePolyphonicChord(
 
   if (expectsMajor3) {
     for (const m of targetMidis) {
-      if (m % 12 === major3Pc) {
+      if (((m % 12) + 12) % 12 === major3Pc) {
         const targetE = getEnergy(m);
         const oppositeE = getEnergy(m - 1);
         if (oppositeE >= 26 && oppositeE > targetE * 1.25) {
@@ -1239,15 +1330,21 @@ export function evaluatePolyphonicChord(
         }
       }
     }
+    if (!matchedUniquePcs.has(major3Pc)) {
+      wrongThirdDetected = true;
+    }
   } else if (expectsMinor3) {
     for (const m of targetMidis) {
-      if (m % 12 === minor3Pc) {
+      if (((m % 12) + 12) % 12 === minor3Pc) {
         const targetE = getEnergy(m);
         const oppositeE = getEnergy(m + 1);
         if (oppositeE >= 26 && oppositeE > targetE * 1.25) {
           wrongThirdDetected = true;
         }
       }
+    }
+    if (!matchedUniquePcs.has(minor3Pc)) {
+      wrongThirdDetected = true;
     }
   }
 
@@ -1257,16 +1354,75 @@ export function evaluatePolyphonicChord(
     .filter((st) => st.string >= 4)
     .map((st) => st.midi);
   for (const openMidi of lowOpenMidis) {
-    if (!uniqueTargetPcs.has(openMidi % 12) && getEnergy(openMidi) >= 55) {
+    if (!uniqueTargetPcs.has(((openMidi % 12) + 12) % 12) && getEnergy(openMidi) >= 55) {
       unmutedStringWarning = true;
       break;
     }
   }
 
+  const rootMatched = matchedUniquePcs.has(rootPc);
+  const bassMatched =
+    bassTargetMidi >= POLY_SPECTRUM_MIN_MIDI &&
+    bassTargetMidi < POLY_SPECTRUM_MIN_MIDI + POLY_SPECTRUM_COUNT
+      ? getEnergy(bassTargetMidi) >= Math.max(16, Math.round(noteThresh * 0.75))
+      : getEnergy(bassTargetMidi + 12) >= noteThresh;
+
+  const targetMaxEnergy = Math.max(...targetMidis.map((m) => getEnergy(m)), 1);
+  const targetMeanEnergy =
+    targetMidis.reduce((acc, m) => acc + getEnergy(m), 0) / Math.max(1, totalNotes);
+  const unusedLowOpenMidis = new Set(
+    getTuningOpenStrings()
+      .filter((st) => st.string > maxStringUsed)
+      .map((st) => st.midi)
+  );
+
+  let foreignDominantDetected = false;
+  const scanMaxMidi = Math.min(POLY_SPECTRUM_MIN_MIDI + POLY_SPECTRUM_COUNT - 1, maxTargetMidi + 2);
+  for (let midi = POLY_SPECTRUM_MIN_MIDI; midi <= scanMaxMidi; midi++) {
+    const e = getEnergy(midi);
+    if (e < 40) continue;
+
+    if (
+      midi <= bassTargetMidi - 2 &&
+      !unusedLowOpenMidis.has(midi) &&
+      e >= Math.max(42, targetMaxEnergy * 0.6)
+    ) {
+      foreignDominantDetected = true;
+      break;
+    }
+
+    const pc = ((midi % 12) + 12) % 12;
+    if (uniqueTargetPcs.has(pc)) continue;
+    if (midi >= bassTargetMidi + 15) continue;
+
+    if (unusedLowOpenMidis.has(midi)) {
+      if (targetMeanEnergy < 35 && e >= 75) {
+        foreignDominantDetected = true;
+        break;
+      }
+      continue;
+    }
+
+    if (e >= Math.max(40, targetMaxEnergy * 0.62)) {
+      foreignDominantDetected = true;
+      break;
+    }
+  }
+
   const matchRatio = Number((matchedNotes / totalNotes).toFixed(2));
-  const minUniquePcs = Math.min(2, uniqueTargetPcs.size);
+  const minUniquePcs =
+    uniqueTargetPcs.size <= 2
+      ? uniqueTargetPcs.size
+      : totalNotes === 3
+      ? 3
+      : tier === 'relaxed'
+      ? 2
+      : 3;
   const passed =
     !wrongThirdDetected &&
+    rootMatched &&
+    bassMatched &&
+    !foreignDominantDetected &&
     matchedUniquePcs.size >= minUniquePcs &&
     matchRatio >= minRatio;
 
@@ -1433,7 +1589,23 @@ export function evaluateNoteHit(
       achieved >= minRequired &&
       Math.abs(bendTargetCentsDiff) <= spec.centsTolerance + (expectedBend * (1 - spec.bendCompletionRatio));
   } else if (targetNote.chordNotes && targetNote.chordNotes.length > 0) {
-    if (
+    if (livePoly && (livePoly.source === 'worklet' || livePoly.source === 'analyser')) {
+      if (livePoly.noteSpectrum && livePoly.noteSpectrum.length === POLY_SPECTRUM_COUNT) {
+        const polyRes = evaluatePolyphonicChord(
+          targetNote.chordNotes,
+          livePoly.noteSpectrum,
+          livePoly.chroma,
+          tier
+        );
+        pitchOk = polyRes.passed;
+        chordMatchRatio = polyRes.matchRatio;
+        if (polyRes.unmutedStringWarning) {
+          unmutedStringWarning = true;
+        }
+      } else {
+        pitchOk = false;
+      }
+    } else if (
       livePoly?.noteSpectrum &&
       livePoly.noteSpectrum.length === POLY_SPECTRUM_COUNT &&
       livePoly.source !== 'simulated'

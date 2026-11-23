@@ -13,8 +13,8 @@ Mic / Hi-Z Interface
   │     │     • Pre-filter: DC offset removal + 1-pole ~1400 Hz LPF before YIN
   │     │     • Onset detector: RMS ratio (>1.45x) + HF transient delta (>55ms cooldown)
   │     │     • YIN pitch: 65–1450 Hz (threshold 0.18, fallback min < 0.34) + 2*tau subharmonic guard + parabolic interp
-  │     │     • Polyphonic FFT: zero-GC 8192-pt Hann Radix-2 FFT -> 45-bin `noteSpectrum` (MIDI 40..84, 2-bin f1 + 2*f1) & 12-bin `chroma`
-  │     │     • Engine stabilization: 5-frame temporal median, 160ms attack settling onset carryover, legato pitch-shift onsets
+  │     │     • Polyphonic FFT: zero-GC 8192-pt Hann Radix-2 FFT -> spectral crest noise gate + parabolic peak isolation (`±54c`) -> 45-bin `noteSpectrum` (MIDI 40..84) & 12-bin `chroma`
+  │     │     • Engine stabilization: 5-frame temporal median, 160ms mono & 36ms polyphonic attack settling onset carryover, legato pitch-shift onsets
   │     │     • Noise gate: `noiseGateDb` (default -58 dB)
   │     └── Fallback: AnalyserNode (fftSize: 4096, same DC+LPF+subharmonic YIN + `computePolyphonicFallback`) + requestAnimationFrame
   └── inputMode: 'asio-bridge' ──▶ WebSocket (`ws://127.0.0.1:9420`)
@@ -43,7 +43,7 @@ Singleton: `guitarSynthEngine = new ElectricGuitarSynthEngine()`
 
 ## Evaluators & Music Theory Utilities
 
-- **`evaluatePolyphonicChord(chordNotes, noteSpectrum, chroma, tier)` (`lowLatencyAudioEngine.ts`):** Verifies power chords & open triads against `45-bin` `noteSpectrum` (`MIDI 40..84`), distinguishes Major vs Minor 3rds (`wrongThirdDetected`), and detects unmuted open bass bleed (`unmutedStringWarning`).
+- **`evaluatePolyphonicChord(chordNotes, noteSpectrum, chroma, tier)` (`lowLatencyAudioEngine.ts`):** Verifies power chords & triads against `45-bin` `noteSpectrum` (`MIDI 40..84`) requiring target Root pitch class, lowest voicing bass energy, Major vs Minor 3rd separation (`wrongThirdDetected`), non-chord dominant peak rejection, and unmuted open bass bleed warnings (`unmutedStringWarning`).
 - **`evaluateNoteHit(..., livePoly?)` (`lowLatencyAudioEngine.ts`):** Scores mono pitch accuracy or polyphonic chord strums (`evaluatePolyphonicChord` when `chordNotes` are present and `noteSpectrum` is populated) + timing delta (offset-compensated by `config.latencyOffsetMs`) + peak bend progress against active `JUDGMENT_TIERS` -> returns `NoteEvaluation`.
 - **`resolveFretPositionForContext(midi, context)` (`src/lib/musicTheory.ts`):** Context-aware unison resolver locking onto matching active targets, prioritizing `lessonNotes`, `scaleOverlay`, `focusFretRange`, open-string fret 0 ergonomics, and `visibleRange`, and exposing secondary `unisons[]` across strings.
 - **`evaluateImprovisation(events, scaleOverlay, chordProgression)`:** Computes `harmonicFit`, `chordToneResolution`, `rhythmBreathing`, `expressiveArticulation`, and `overallScore` for Phase IV Jam Lab.

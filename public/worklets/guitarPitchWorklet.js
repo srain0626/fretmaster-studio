@@ -40,6 +40,9 @@ class GuitarPitchProcessor extends AudioWorkletProcessor {
       this.sinTable[i] = Math.sin(ang);
     }
     this.polyHopCounter = 0;
+    this.fftMag = new Float32Array(1024);
+    this.peakFreqs = new Float32Array(256);
+    this.peakMags = new Float32Array(256);
     this.lastChroma = new Array(12).fill(0);
     this.lastNoteSpectrum = new Array(45).fill(0);
 
@@ -331,28 +334,89 @@ class GuitarPitchProcessor extends AudioWorkletProcessor {
 
     const binHz = sr / N;
     const halfBins = N >> 1;
+    const specOut = this.lastNoteSpectrum;
+    const chromaOut = this.lastChroma;
+    const minBin = Math.max(2, Math.floor(70 / binHz));
+    const maxBin = Math.min(halfBins - 2, Math.min(1022, Math.ceil(3000 / binHz)));
+    const bandMaxBin = Math.min(maxBin, Math.ceil(1500 / binHz));
+    const mag = this.fftMag;
+
+    let sumMag = 0;
+    let cntMag = 0;
+    let maxMag = 0;
+    for (let k = minBin - 1; k <= maxBin + 1; k++) {
+      const m = Math.hypot(re[k], im[k]);
+      mag[k] = m;
+      if (k >= minBin && k <= bandMaxBin) {
+        sumMag += m;
+        cntMag++;
+      }
+      if (m > maxMag) maxMag = m;
+    }
+
+    const crest = cntMag > 0 && sumMag > 1e-9 ? maxMag / (sumMag / cntMag) : 0;
+    const tonalWeight = crest <= 3.2 ? 0 : Math.min(1, (crest - 3.2) / 1.6);
+    if (tonalWeight <= 0 || maxMag < 1e-6) {
+      specOut.fill(0);
+      chromaOut.fill(0);
+      return;
+    }
+
+    const peakFreqs = this.peakFreqs;
+    const peakMags = this.peakMags;
+    let peakCount = 0;
+    const minPeakMag = maxMag * 0.04;
+    for (let k = minBin; k <= maxBin && peakCount < 256; k++) {
+      const m0 = mag[k - 1];
+      const m1 = mag[k];
+      const m2 = mag[k + 1];
+      if (m1 >= m0 && m1 >= m2 && m1 >= minPeakMag) {
+        const denom = m0 - 2 * m1 + m2;
+        const delta =
+          Math.abs(denom) > 1e-9
+            ? Math.max(-0.5, Math.min(0.5, (0.5 * (m0 - m2)) / denom))
+            : 0;
+        peakFreqs[peakCount] = (k + delta) * binHz;
+        peakMags[peakCount] = m1 - 0.25 * (m0 - m2) * delta;
+        peakCount++;
+      }
+    }
+
+    const peakAtFreq = (targetFreq, maxCents) => {
+      let best = 0;
+      for (let p = 0; p < peakCount; p++) {
+        const cents = 1200 * Math.abs(Math.log2(peakFreqs[p] / targetFreq));
+        if (cents <= maxCents) {
+          const ratio = cents / maxCents;
+          const w = 1 - 0.55 * ratio * ratio;
+          const val = peakMags[p] * w;
+          if (val > best) best = val;
+        }
+      }
+      return best;
+    };
+
     const rawEnergies = new Float32Array(45);
     const rawChroma = new Float32Array(12);
-    let maxEnergy = 1e-6;
-
-    const bracketMag = (targetFreq) => {
-      const exactBin = targetFreq / binHz;
-      const b0 = Math.max(1, Math.min(halfBins - 2, Math.floor(exactBin)));
-      const b1 = b0 + 1;
-      const m0 = Math.hypot(re[b0], im[b0]);
-      const m1 = Math.hypot(re[b1], im[b1]);
-      return m0 > m1 ? m0 : m1;
-    };
+    let maxEnergy = 0;
 
     for (let idx = 0; idx < 45; idx++) {
       const midi = 40 + idx;
       const f1 = 440 * Math.pow(2, (midi - 69) / 12);
-      const mag1 = bracketMag(f1);
-      const mag2 = f1 * 2 < sr * 0.45 ? bracketMag(f1 * 2) : 0;
-      const energy = Math.sqrt(mag1 * (0.55 * mag1 + 0.45 * mag2));
+      const m1 = peakAtFreq(f1, 54);
+      const m2 = f1 * 2 < 2900 ? peakAtFreq(f1 * 2, 48) : 0;
+      const harmonicCap = midi <= 49 ? 4.0 : 2.5;
+      const energy =
+        (m1 > 0 ? 0.58 * m1 + 0.42 * Math.min(m2, m1 * harmonicCap) : 0) * tonalWeight;
       rawEnergies[idx] = energy;
       if (energy > maxEnergy) maxEnergy = energy;
       rawChroma[midi % 12] += energy;
+    }
+
+    if (maxEnergy <= 1e-6) {
+      specOut.fill(0);
+      chromaOut.fill(0);
+      return;
     }
 
     let maxChroma = 1e-6;
@@ -360,8 +424,6 @@ class GuitarPitchProcessor extends AudioWorkletProcessor {
       if (rawChroma[c] > maxChroma) maxChroma = rawChroma[c];
     }
 
-    const specOut = this.lastNoteSpectrum;
-    const chromaOut = this.lastChroma;
     for (let idx = 0; idx < 45; idx++) {
       specOut[idx] = Math.round((rawEnergies[idx] / maxEnergy) * 100);
     }

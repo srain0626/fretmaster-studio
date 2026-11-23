@@ -351,7 +351,12 @@ function AuthenticatedStudioWorkspace({
     midi: number;
     at: number;
     hadSilence: boolean;
+    chordSig?: string;
   } | null>(null);
+  const lastStrumOnsetRef = useRef<{
+    atMs: number;
+    consumedNoteId: string | null;
+  }>({ atMs: 0, consumedNoteId: null });
   const wrongHoldRef = useRef<{
     noteId: string;
     midi: number;
@@ -747,6 +752,7 @@ function AuthenticatedStudioWorkspace({
     peakBendRef.current = 0;
     lastLoopCountRef.current = 0;
     lastAcceptedRef.current = null;
+    lastStrumOnsetRef.current = { atMs: 0, consumedNoteId: null };
     wrongHoldRef.current = null;
     silenceStartAtRef.current = 0;
     countInActiveRef.current = false;
@@ -1135,6 +1141,7 @@ function AuthenticatedStudioWorkspace({
       maxFlowStreakRef.current = 0;
       lastLoopCountRef.current = 0;
       lastAcceptedRef.current = null;
+      lastStrumOnsetRef.current = { atMs: 0, consumedNoteId: null };
       wrongHoldRef.current = null;
       pendingRawLatencyBatchRef.current = [];
       latencySampledNotesRef.current.clear();
@@ -1457,7 +1464,9 @@ function AuthenticatedStudioWorkspace({
       livePitch.source !== 'simulated' &&
       nowWallMs >= examAutoStartArmedAtRef.current &&
       livePitch.isOnset &&
-      livePitch.clarity >= 0.65 &&
+      (livePitch.clarity >= 0.65 ||
+        (Boolean(lesson.notes[0]?.chordNotes?.length) &&
+          Boolean(livePitch.noteSpectrum?.some((v) => v >= 55)))) &&
       livePitch.rmsDb >= audioConfig.noiseGateDb + 6
     ) {
       if (examCountInBars > 0) {
@@ -1504,6 +1513,9 @@ function AuthenticatedStudioWorkspace({
       return;
     }
 
+    const hasPolySpectrumSignal = Boolean(
+      livePitch.noteSpectrum && livePitch.noteSpectrum.some((v) => v >= 45)
+    );
     const hasSignalForStepMode = livePitch.isOnset || livePitch.clarity >= 0.58;
 
     // Helper: prevent single sustain from auto-advancing repeated identical pitches without re-attack or mute
@@ -1521,8 +1533,14 @@ function AuthenticatedStudioWorkspace({
 
     // Wait-for-Note Mode
     if (practiceMode === 'wait' && targetNote) {
-      if (!hasSignalForStepMode) return;
       const isChordTarget = Boolean(targetNote.chordNotes && targetNote.chordNotes.length > 0);
+      if (isChordTarget) {
+        if (livePitch.source !== 'simulated' && !livePitch.isOnset && !hasPolySpectrumSignal) {
+          return;
+        }
+      } else if (!hasSignalForStepMode) {
+        return;
+      }
       if (!isChordTarget && (livePitch.frequency <= 0 || livePitch.nearestMidi <= 0)) return;
       if (targetNote.bendCents) {
         const spec = JUDGMENT_TIERS[judgmentTier];
@@ -1545,22 +1563,36 @@ function AuthenticatedStudioWorkspace({
       );
 
       if (ev.result !== 'miss') {
+        const currentChordSig = isChordTarget
+          ? targetNote.chordNotes!.map((c) => `${c.string}:${c.fret}`).join(',')
+          : undefined;
         if (
           !isChordTarget &&
           !canAcceptPitchForNote(targetNote.id, livePitch.nearestMidi, livePitch.isOnset)
         ) {
           return;
         }
-        if (isChordTarget && !livePitch.isOnset && livePitch.source !== 'simulated') {
+        if (isChordTarget && livePitch.source !== 'simulated') {
           const prevAcc = lastAcceptedRef.current;
           if (prevAcc && prevAcc.noteId === targetNote.id) return;
-          if (prevAcc && nowWallMs - prevAcc.at < 260 && !prevAcc.hadSilence) return;
+          if (prevAcc && currentChordSig && prevAcc.chordSig === currentChordSig) {
+            if (nowWallMs - prevAcc.at < 180) return;
+            if (!livePitch.isOnset && !prevAcc.hadSilence) return;
+          } else if (
+            prevAcc &&
+            nowWallMs - prevAcc.at < 220 &&
+            !livePitch.isOnset &&
+            !prevAcc.hadSilence
+          ) {
+            return;
+          }
         }
         lastAcceptedRef.current = {
           noteId: targetNote.id,
           midi: livePitch.nearestMidi,
           at: nowWallMs,
           hadSilence: false,
+          chordSig: currentChordSig,
         };
         wrongHoldRef.current = null;
 
@@ -1851,6 +1883,12 @@ function AuthenticatedStudioWorkspace({
     // Timed Loop & Exam Modes
     if ((practiceMode === 'loop' || practiceMode === 'exam') && isPlaying) {
       if (countInActiveRef.current) return;
+      if (
+        (livePitch.isOnset || livePitch.source === 'simulated') &&
+        (nowWallMs - lastStrumOnsetRef.current.atMs > 70 || livePitch.source === 'simulated')
+      ) {
+        lastStrumOnsetRef.current = { atMs: nowWallMs, consumedNoteId: null };
+      }
       const secPerBeat = 60 / bpm;
       const loopStartBeat = loopRangeBars[0] * lesson.beatsPerBar;
       const loopSpan = Math.max(
@@ -1887,6 +1925,15 @@ function AuthenticatedStudioWorkspace({
 
       const isClosestChord = Boolean(closestNote.chordNotes && closestNote.chordNotes.length > 0);
       if (!isClosestChord && (livePitch.frequency <= 0 || livePitch.nearestMidi <= 0)) return;
+      if (isClosestChord && livePitch.source !== 'simulated') {
+        if (nowWallMs - lastStrumOnsetRef.current.atMs > 260) return;
+        if (
+          lastStrumOnsetRef.current.consumedNoteId &&
+          lastStrumOnsetRef.current.consumedNoteId !== closestNote.id
+        ) {
+          return;
+        }
+      }
 
       const existingEval = evaluationsRef.current[closestNote.id];
       const rankOf = (r: NoteEvaluation['result']) =>
@@ -1952,6 +1999,9 @@ function AuthenticatedStudioWorkspace({
       peakBendRef.current = 0;
 
       if (ev.result !== 'miss') {
+        if (isClosestChord) {
+          lastStrumOnsetRef.current.consumedNoteId = closestNote.id;
+        }
         if (!existingEval || existingEval.result === 'miss') {
           maxFlowStreakRef.current += 1;
         }
