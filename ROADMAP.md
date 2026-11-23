@@ -1,13 +1,13 @@
 # FretMaster Studio Roadmap
 
-> **Current Production Baseline:** `v0.3.1` (`https://fretmaster-studio.vercel.app`)  
+> **Current Production Baseline:** `v0.4.0` (`https://fretmaster-studio.vercel.app`)  
 > FretMaster Studio evolves transparently in lockstep with open GitHub Milestones and Issues (`#1`–`#6`), linking real learner funnel insights directly to upcoming pedagogy, sound, and creator milestones.
 
 ```mermaid
 flowchart LR
-    V2["v0.1 – v0.2.6 (Shipped)\n39 Bilingual Lessons · 4096 YIN DSP\nUnison Fretboard Lock · Count-In & Auto-Start\nGain/Clip Meter · Adaptive Latency · OAuth"] --> V3["v0.3.0 – v0.3.1 (Current)\n8192-pt FFT Chord Strum (#4)\nCI Test Suite & Audio Ping (#2)\nLearner-First Landing & Lesson Deep-Link\nFirst-Party Telemetry & Admin Console"]
-    V3 --> V4["v0.4.0 (Next)\nHistory Charts & Weak-Bar Queue (#5)\nDrop D / Eb & Virtual Capo (#3)\n1-Lesson Guest Sandbox · Mute/Vibrato DSP"]
-    V4 --> V5["v0.5.0\nNative Rust ASIO / CoreAudio Daemon (#1)\nWebAudio Cab IR & Direct Monitor\nSampled Guitar, Drum & Bass Stems"]
+    V2["v0.1 – v0.2.6 (Shipped)\n39 Bilingual Lessons · 4096 YIN DSP\nUnison Fretboard Lock · Count-In & Auto-Start\nGain/Clip Meter · Adaptive Latency · OAuth"] --> V3["v0.3.0 – v0.3.1 (Shipped)\n8192-pt FFT Chord Strum (#4)\nCI Test Suite & Audio Ping (#2)\nLearner-First Landing & Lesson Deep-Link\nFirst-Party Telemetry & Admin Console"]
+    V3 --> V4["v0.4.0 (Current)\nHistory Charts & Weak-Bar Queue (#5)\nDrop D / Eb & Virtual Capo (#3)\nGuest Sandbox · Mute/Vibrato DSP"]
+    V4 --> V5["v0.5.0 (Next)\nNative Rust ASIO / CoreAudio Daemon (#1)\nWebAudio Cab IR & Direct Monitor\nSampled Guitar, Drum & Bass Stems"]
     V5 --> V6["v0.6.0\nModule 10 Barre Chords & CAGED\nGenre Etude Packs (Funk / City-Pop / J-Rock)\n12-Key Backing Jam Transposition"]
     V6 --> V10["v1.0.0\nCustom TAB / MusicXML Loop Editor (#6)\nCommunity Lesson PR Packs\nLandscape Tablet & Offline PWA"]
 ```
@@ -43,7 +43,7 @@ flowchart LR
 
 ## `v0.4.0` — Adaptive Retention Loop, Guest Sandbox, Tunings & Fine Technique Coaching
 
-*Status: Next Up* · Linked Issues: [#3](https://github.com/srain0626/fretmaster-studio/issues/3), [#5](https://github.com/srain0626/fretmaster-studio/issues/5)
+*Status: Current Release* · Linked Issues: [#3](https://github.com/srain0626/fretmaster-studio/issues/3), [#5](https://github.com/srain0626/fretmaster-studio/issues/5)
 
 - **Practice History Charts, Spaced Review & Weak-Bar Drill Queue (`#5`)**:
   - Upgrade `SkillAnalyticsDialog` with multi-week charts from `practice_sessions` showing daily practice minutes, accuracy trend, BPM velocity, and early/late timing bias.
@@ -59,7 +59,7 @@ flowchart LR
 
 ## `v0.5.0` — Studio Amp/IR Monitoring, Sampled Backing & Native ASIO/CoreAudio Bridge
 
-*Linked Issue:* [#1](https://github.com/srain0626/fretmaster-studio/issues/1)
+*Status: Next Up* · Linked Issue: [#1](https://github.com/srain0626/fretmaster-studio/issues/1)
 
 - **Cross-Platform Native WebSocket Bridge (`ws://127.0.0.1:9420`, `#1`)**:
   - Lightweight open-source Rust (`cpal` + `tokio-tungstenite`) tray daemon for Windows ASIO, macOS CoreAudio, and Linux JACK hardware audio interfaces at `2–4 ms` round-trip latency, pairing in 1 click with `lowLatencyAudioEngine.ts`.

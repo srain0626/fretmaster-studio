@@ -1,4 +1,10 @@
-import type { FingerNumber, GuitarString, ScaleOverlayNote } from '@/types/guitar';
+import type {
+  FingerNumber,
+  GuitarString,
+  ScaleOverlayNote,
+  TuningProfile,
+  TuningProfileId,
+} from '@/types/guitar';
 
 // Standard Guitar Tuning MIDI Numbers:
 // String 1 (High E4): 64
@@ -15,6 +21,112 @@ export const STANDARD_TUNING_MIDI: Record<GuitarString, number> = {
   5: 45,
   6: 40,
 };
+
+export const TUNING_PROFILES: Record<TuningProfileId, TuningProfile> = {
+  standard: {
+    id: 'standard',
+    name: 'E Standard',
+    labelKo: '스탠다드 (EADGBE)',
+    shortLabel: 'E Std',
+    stringMidi: { 1: 64, 2: 59, 3: 55, 4: 50, 5: 45, 6: 40 },
+    descriptionEn: 'Classic 6-string standard tuning for all 39 curriculum lessons.',
+    descriptionKo: '39개 전체 커리큘럼의 기준이 되는 표준 일렉기타 튜닝입니다.',
+  },
+  'drop-d': {
+    id: 'drop-d',
+    name: 'Drop D',
+    labelKo: '드롭 D (DADGBE)',
+    shortLabel: 'Drop D',
+    stringMidi: { 1: 64, 2: 59, 3: 55, 4: 50, 5: 45, 6: 38 },
+    descriptionEn: 'Low 6th string dropped a whole step to D2 for 1-finger rock & metal power chords.',
+    descriptionKo: '6번줄만 온음 낮춰(D2) 검지 하나로 무거운 록·메탈 파워코드를 연주합니다.',
+  },
+  'eb-standard': {
+    id: 'eb-standard',
+    name: 'Eb Standard',
+    labelKo: '반음 다운 (Eb)',
+    shortLabel: 'Eb Std',
+    stringMidi: { 1: 63, 2: 58, 3: 54, 4: 49, 5: 44, 6: 39 },
+    descriptionEn: 'Half-step down tuning favored by Hendrix, SRV, and Slash for softer bend tension.',
+    descriptionKo: '모든 줄을 반음 낮춰 벤딩 텐션을 부드럽게 만든 록·블루스 튜닝입니다.',
+  },
+  'open-g': {
+    id: 'open-g',
+    name: 'Open G',
+    labelKo: '오픈 G (DGDGBD)',
+    shortLabel: 'Open G',
+    stringMidi: { 1: 62, 2: 59, 3: 55, 4: 50, 5: 43, 6: 38 },
+    descriptionEn: 'Open strings ring a full G Major triad—ideal for blues slide and Stones-style riffs.',
+    descriptionKo: '개방현을 치면 G 메이저 화음이 울리는 블루스·슬라이드 특화 튜닝입니다.',
+  },
+  dadgad: {
+    id: 'dadgad',
+    name: 'DADGAD',
+    labelKo: 'DADGAD 모달',
+    shortLabel: 'DADGAD',
+    stringMidi: { 1: 62, 2: 57, 3: 55, 4: 50, 5: 45, 6: 38 },
+    descriptionEn: 'Suspended Dsus4 modal tuning for Celtic, acoustic fingerstyle, and ambient rock.',
+    descriptionKo: 'Dsus4 모달 공명으로 핑거스타일과 몽환적인 록 리프에 쓰이는 튜닝입니다.',
+  },
+};
+
+export const TUNING_PROFILE_LIST: TuningProfile[] = [
+  TUNING_PROFILES.standard,
+  TUNING_PROFILES['drop-d'],
+  TUNING_PROFILES['eb-standard'],
+  TUNING_PROFILES['open-g'],
+  TUNING_PROFILES.dadgad,
+];
+
+let activeTuningProfileId: TuningProfileId = 'standard';
+let activeCapoFret = 0;
+
+export function setActiveTuning(profileId: TuningProfileId, capoFret = 0): void {
+  activeTuningProfileId = TUNING_PROFILES[profileId] ? profileId : 'standard';
+  activeCapoFret = Math.max(0, Math.min(7, Math.round(capoFret)));
+}
+
+export function getActiveTuning(): {
+  profileId: TuningProfileId;
+  profile: TuningProfile;
+  capoFret: number;
+} {
+  return {
+    profileId: activeTuningProfileId,
+    profile: TUNING_PROFILES[activeTuningProfileId],
+    capoFret: activeCapoFret,
+  };
+}
+
+export function getEffectiveOpenStringMidi(
+  string: GuitarString,
+  profileId: TuningProfileId = activeTuningProfileId,
+  capoFret: number = activeCapoFret
+): number {
+  const base = (TUNING_PROFILES[profileId] ?? TUNING_PROFILES.standard).stringMidi[string];
+  return base + Math.max(0, Math.min(7, Math.round(capoFret)));
+}
+
+export function getTuningOpenStrings(
+  profileId: TuningProfileId = activeTuningProfileId,
+  capoFret: number = activeCapoFret
+): {
+  string: GuitarString;
+  label: string;
+  midi: number;
+  freq: number;
+}[] {
+  const strings: GuitarString[] = [6, 5, 4, 3, 2, 1];
+  return strings.map((string) => {
+    const midi = getEffectiveOpenStringMidi(string, profileId, capoFret);
+    return {
+      string,
+      label: midiToNoteName(midi),
+      midi,
+      freq: Number(midiToFreq(midi).toFixed(2)),
+    };
+  });
+}
 
 export const TUNING_OPEN_STRINGS: {
   string: GuitarString;
@@ -47,8 +159,19 @@ const INTERVAL_NAMES: Record<number, string> = {
   11: '7',
 };
 
-export function getNoteMidi(string: GuitarString, fret: number): number {
-  return STANDARD_TUNING_MIDI[string] + fret;
+export function getNoteMidi(
+  string: GuitarString,
+  fret: number,
+  tuningOverride?: { profileId?: TuningProfileId; capoFret?: number }
+): number {
+  const openMidi = tuningOverride
+    ? getEffectiveOpenStringMidi(
+        string,
+        tuningOverride.profileId ?? activeTuningProfileId,
+        tuningOverride.capoFret ?? activeCapoFret
+      )
+    : getEffectiveOpenStringMidi(string);
+  return openMidi + fret;
 }
 
 export function midiToFreq(midi: number): number {
@@ -132,7 +255,7 @@ export function findPossiblePositionsForMidi(
   const results: { string: GuitarString; fret: number }[] = [];
   const strings: GuitarString[] = [1, 2, 3, 4, 5, 6];
   for (const s of strings) {
-    const fret = midi - STANDARD_TUNING_MIDI[s];
+    const fret = midi - getEffectiveOpenStringMidi(s);
     if (fret >= 0 && fret <= maxFret) {
       results.push({ string: s, fret });
     }

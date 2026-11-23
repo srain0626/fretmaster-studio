@@ -53,7 +53,11 @@ function getServerLessonParam(): string | null {
   return null;
 }
 
-export function AuthGateCard() {
+export function AuthGateCard({
+  onStartGuestDemo,
+}: {
+  onStartGuestDemo?: () => void;
+} = {}) {
   const { locale, preference: localePref, setPreference: setLocalePref, tr } = useLocale();
   const { themePreference, setThemePreference } = useThemePreference();
   const { isConfigured, authError, signInWithGoogle } = useAuth();
@@ -221,6 +225,31 @@ export function AuthGateCard() {
                   : tr('Continue with Google', 'Google 계정으로 계속하기')}
               </span>
             </Button>
+
+            {onStartGuestDemo ? (
+              <Button
+                type="button"
+                variant="outline"
+                size="lg"
+                onClick={onStartGuestDemo}
+                className="w-full h-10 rounded-xl text-xs font-semibold"
+              >
+                {tr(
+                  'Try 3 Starter Lessons Without Sign-In (1-1 · 3-1 · 4-1)',
+                  '로그인 없이 3개 대표 레슨 먼저 체험하기 (1-1 · 3-1 · 4-1)'
+                )}
+              </Button>
+            ) : (
+              <Link
+                href="/studio?demo=1&lesson=m1-1"
+                className="w-full h-10 rounded-xl border border-border bg-background hover:bg-secondary/70 text-foreground text-xs font-semibold inline-flex items-center justify-center transition-colors"
+              >
+                {tr(
+                  'Try 3 Starter Lessons Without Sign-In (1-1 · 3-1 · 4-1)',
+                  '로그인 없이 3개 대표 레슨 먼저 체험하기 (1-1 · 3-1 · 4-1)'
+                )}
+              </Link>
+            )}
 
             <div className="grid grid-cols-2 gap-2 pt-1 text-[11px] text-muted-foreground">
               <div className="flex items-center gap-1.5 rounded-lg border border-border/70 bg-background/60 px-2.5 py-2">

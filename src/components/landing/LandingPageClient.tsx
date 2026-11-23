@@ -473,12 +473,28 @@ export function LandingPageClient() {
                         <ArrowRight className="w-4 h-4" />
                       </Button>
 
+                      {!user && (
+                        <Link
+                          href="/studio?demo=1&lesson=m1-1"
+                          onClick={() =>
+                            trackStudioEvent('landing_cta_click', {
+                              placement: 'hero_guest_demo',
+                              action: 'guest_sandbox',
+                              lesson_id: 'm1-1',
+                            })
+                          }
+                          className="inline-flex items-center justify-center gap-2 h-12 rounded-xl border border-border bg-card px-5 text-sm font-semibold text-foreground hover:bg-secondary/70 transition-colors"
+                        >
+                          <span>{tr('Try Lesson 1-1 Without Sign-In', '로그인 없이 1-1 바로 체험')}</span>
+                        </Link>
+                      )}
+
                       <button
                         type="button"
                         onClick={() => scrollToSection('curriculum')}
-                        className="inline-flex items-center justify-center gap-2 h-12 rounded-xl border border-border bg-card px-5 text-sm font-semibold text-foreground hover:bg-secondary/70 transition-colors"
+                        className="inline-flex items-center justify-center gap-1.5 h-12 rounded-xl px-3 text-sm font-medium text-muted-foreground hover:text-foreground transition-colors"
                       >
-                        <span>{tr('Browse 39 Lessons', '39개 레슨 커리큘럼 보기')}</span>
+                        <span>{tr('Browse 39 Lessons', '39개 커리큘럼 보기')}</span>
                       </button>
                     </div>
 

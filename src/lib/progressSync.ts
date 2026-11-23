@@ -3,6 +3,8 @@ import type {
   AudioDeviceConfig,
   JudgmentTier,
   LessonProgressRecord,
+  PracticeMode,
+  PracticeSessionRecord,
   SessionTelemetry,
   UserProgressState,
 } from '@/types/guitar';
@@ -61,6 +63,15 @@ export function mergeUserProgress(
     const a = local.lessonRecords?.[id];
     const b = cloud.lessonRecords?.[id];
     if (!a && !b) continue;
+    const latestPracticedAt =
+      (a?.lastPracticedAt ?? '') >= (b?.lastPracticedAt ?? '')
+        ? a?.lastPracticedAt
+        : b?.lastPracticedAt;
+    const latestWeakBars =
+      (a?.lastPracticedAt ?? '') >= (b?.lastPracticedAt ?? '')
+        ? a?.weakBarIndices ?? b?.weakBarIndices
+        : b?.weakBarIndices ?? a?.weakBarIndices;
+
     mergedRecords[id] = {
       completed: Boolean(a?.completed || b?.completed),
       bestScore: Math.max(a?.bestScore ?? 0, b?.bestScore ?? 0),
@@ -68,6 +79,8 @@ export function mergeUserProgress(
       highestTierCleared: higherTier(a?.highestTierCleared, b?.highestTierCleared),
       bestBpm: Math.max(a?.bestBpm ?? 0, b?.bestBpm ?? 0),
       earCopySolved: Boolean(a?.earCopySolved || b?.earCopySolved),
+      lastPracticedAt: latestPracticedAt,
+      weakBarIndices: latestWeakBars,
     };
   }
 
@@ -226,4 +239,39 @@ export async function recordPracticeSession(
     bpm_played: Math.round(telemetry.bpmPlayed),
     passed: telemetry.passed,
   });
+}
+
+export async function fetchPracticeSessions(
+  userId: string,
+  limit = 30
+): Promise<PracticeSessionRecord[]> {
+  const supabase = createSupabaseBrowserClient();
+  if (!supabase) return [];
+
+  const { data, error } = await supabase
+    .from('practice_sessions')
+    .select(
+      'id, lesson_id, mode, tier, score, grade, pitch_accuracy, timing_accuracy, bpm_played, passed, created_at'
+    )
+    .eq('user_id', userId)
+    .order('created_at', { ascending: false })
+    .limit(limit);
+
+  if (error || !data) {
+    return [];
+  }
+
+  return data.map((row) => ({
+    id: String(row.id),
+    lessonId: String(row.lesson_id),
+    mode: (row.mode as PracticeMode) || 'exam',
+    tier: (row.tier as JudgmentTier) || 'standard',
+    score: Number(row.score ?? 0),
+    grade: (row.grade as PracticeSessionRecord['grade']) || 'Retry',
+    pitchAccuracy: Number(row.pitch_accuracy ?? 0),
+    timingAccuracy: Number(row.timing_accuracy ?? 0),
+    bpmPlayed: Number(row.bpm_played ?? 0),
+    passed: Boolean(row.passed),
+    createdAt: String(row.created_at ?? new Date().toISOString()),
+  }));
 }

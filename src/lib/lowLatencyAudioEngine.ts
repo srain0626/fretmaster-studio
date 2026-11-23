@@ -2,6 +2,7 @@ import {
   findBestFretForMidi,
   freqToMidiFloat,
   getNoteMidi,
+  getTuningOpenStrings,
   midiToNoteName,
 } from '@/lib/musicTheory';
 
@@ -31,6 +32,7 @@ import type {
   NoteEvaluation,
   NoteEvent,
   ScaleOverlayNote,
+  VibratoMetrics,
 } from '@/types/guitar';
 
 export const POLY_SPECTRUM_MIN_MIDI = 40;
@@ -1249,9 +1251,12 @@ export function evaluatePolyphonicChord(
     }
   }
 
-  // Warn if unmuted low open bass strings (6E=40, 5A=45, 4D=50) outside the chord ring loudly
+  // Warn if unmuted low open bass strings (6, 5, 4 in active tuning) outside the chord ring loudly
   let unmutedStringWarning = false;
-  for (const openMidi of [40, 45, 50]) {
+  const lowOpenMidis = getTuningOpenStrings()
+    .filter((st) => st.string >= 4)
+    .map((st) => st.midi);
+  for (const openMidi of lowOpenMidis) {
     if (!uniqueTargetPcs.has(openMidi % 12) && getEnergy(openMidi) >= 55) {
       unmutedStringWarning = true;
       break;
@@ -1272,6 +1277,126 @@ export function evaluatePolyphonicChord(
     totalNotes,
     wrongThirdDetected,
     unmutedStringWarning,
+  };
+}
+
+/**
+ * Detect accidental unmuted open-string sustain during single-note passages
+ * (e.g. Phase I open-string / chromatic drills 1-1 through 2-4).
+ */
+export function detectSingleNoteOpenStringBleed(
+  targetNote: Pick<NoteEvent, 'string' | 'fret'>,
+  noteSpectrum: number[] | undefined
+): { hasBleed: boolean; bleedingStringLabel?: string } {
+  if (!noteSpectrum || noteSpectrum.length !== POLY_SPECTRUM_COUNT) {
+    return { hasBleed: false };
+  }
+  const targetMidi = getNoteMidi(targetNote.string, targetNote.fret);
+  const targetPc = ((targetMidi % 12) + 12) % 12;
+  const getEnergy = (midi: number): number => {
+    const idx = Math.round(midi) - POLY_SPECTRUM_MIN_MIDI;
+    if (idx < 0 || idx >= noteSpectrum.length) return 0;
+    return noteSpectrum[idx] ?? 0;
+  };
+  const targetEnergy = Math.max(getEnergy(targetMidi), 40);
+
+  for (const st of getTuningOpenStrings()) {
+    if (st.string === targetNote.string) continue;
+    if (st.midi < POLY_SPECTRUM_MIN_MIDI || st.midi > POLY_SPECTRUM_MIN_MIDI + POLY_SPECTRUM_COUNT - 1) {
+      continue;
+    }
+    const openPc = ((st.midi % 12) + 12) % 12;
+    // Skip same pitch-class octaves or natural 5th harmonics of the target note
+    if (openPc === targetPc || openPc === (targetPc + 7) % 12) continue;
+
+    const openEnergy = getEnergy(st.midi);
+    if (openEnergy >= 62 && openEnergy >= targetEnergy * 0.62) {
+      return {
+        hasBleed: true,
+        bleedingStringLabel: `${st.string}${st.label}`,
+      };
+    }
+  }
+
+  return { hasBleed: false };
+}
+
+/**
+ * Analyze recent pitch excursion samples (in cents relative to the base note)
+ * to measure live vibrato width (cents), oscillation rate (Hz), and stability.
+ */
+export function analyzeVibratoContour(
+  samples: { timestampMs: number; centsOffset: number }[]
+): VibratoMetrics {
+  if (samples.length < 8) {
+    return {
+      widthCents: 0,
+      rateHz: 0,
+      stabilityScore: 0,
+      isDetected: false,
+      samplesCents: samples.map((s) => Math.round(s.centsOffset)),
+    };
+  }
+
+  const ordered = [...samples].sort((a, b) => a.timestampMs - b.timestampMs);
+  const durationSec = (ordered[ordered.length - 1].timestampMs - ordered[0].timestampMs) / 1000;
+  const rawCents = ordered.map((s) => s.centsOffset);
+  const mean = rawCents.reduce((acc, v) => acc + v, 0) / rawCents.length;
+  const centered = rawCents.map((v) => v - mean);
+
+  let minVal = Infinity;
+  let maxVal = -Infinity;
+  for (const v of centered) {
+    if (v < minVal) minVal = v;
+    if (v > maxVal) maxVal = v;
+  }
+  const widthCents = Math.round(Math.max(0, maxVal - minVal));
+
+  // Count hysteresis-filtered mean crossings to reject noise jitter
+  const deadband = 5;
+  let lastSign = 0;
+  let crossings = 0;
+  for (const v of centered) {
+    const sign = v > deadband ? 1 : v < -deadband ? -1 : 0;
+    if (sign !== 0) {
+      if (lastSign !== 0 && sign !== lastSign) {
+        crossings += 1;
+      }
+      lastSign = sign;
+    }
+  }
+
+  const rateHz =
+    durationSec >= 0.25 && crossings >= 2
+      ? Number(((crossings / 2) / durationSec).toFixed(1))
+      : 0;
+
+  const isDetected =
+    durationSec >= 0.25 &&
+    widthCents >= 16 &&
+    widthCents <= 180 &&
+    rateHz >= 2.5 &&
+    rateHz <= 10.5;
+
+  let stabilityScore = 0;
+  if (isDetected) {
+    const widthFit =
+      widthCents >= 22 && widthCents <= 75
+        ? 100
+        : Math.max(45, 100 - Math.min(Math.abs(widthCents - 22), Math.abs(widthCents - 75)) * 1.1);
+    const rateFit =
+      rateHz >= 4.0 && rateHz <= 7.5
+        ? 100
+        : Math.max(45, 100 - Math.min(Math.abs(rateHz - 4.0), Math.abs(rateHz - 7.5)) * 14);
+    stabilityScore = Math.round(widthFit * 0.55 + rateFit * 0.45);
+  }
+
+  return {
+    widthCents,
+    rateHz,
+    stabilityScore,
+    isDetected,
+    samplesCents: centered.slice(-24).map((v) => Math.round(v)),
   };
 }
 
@@ -1299,6 +1424,7 @@ export function evaluateNoteHit(
   let pitchOk = false;
   let chordMatchRatio: number | undefined;
   let unmutedStringWarning: boolean | undefined;
+  let unmutedStringDetail: string | undefined;
 
   if (expectedBend > 0) {
     const achieved = Math.max(peakBendCents, rawCentsDiff);
@@ -1334,6 +1460,17 @@ export function evaluateNoteHit(
     }
   } else {
     pitchOk = Math.abs(rawCentsDiff) <= spec.centsTolerance;
+    if (
+      pitchOk &&
+      livePoly?.noteSpectrum &&
+      livePoly.source !== 'simulated'
+    ) {
+      const bleed = detectSingleNoteOpenStringBleed(targetNote, livePoly.noteSpectrum);
+      if (bleed.hasBleed) {
+        unmutedStringWarning = true;
+        unmutedStringDetail = bleed.bleedingStringLabel;
+      }
+    }
   }
 
   const absTiming = Math.abs(timingErrorMs);
@@ -1365,6 +1502,7 @@ export function evaluateNoteHit(
     detectedMidi: detectedMidiFloat > 0 ? Math.round(detectedMidiFloat) : undefined,
     chordMatchRatio,
     unmutedStringWarning,
+    unmutedStringDetail,
   };
 }
 

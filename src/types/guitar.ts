@@ -24,6 +24,25 @@ export type PracticeMode = 'guide' | 'wait' | 'loop' | 'exam' | 'earcopy' | 'jam
 export type FretLabelMode = 'finger' | 'interval' | 'note' | 'fret';
 export type AmpPreset = 'clean' | 'crunch' | 'lead';
 export type FretboardTheme = 'rosewood' | 'maple' | 'ebony';
+export type TuningProfileId = 'standard' | 'drop-d' | 'eb-standard' | 'open-g' | 'dadgad';
+
+export interface TuningProfile {
+  id: TuningProfileId;
+  name: string;
+  labelKo: string;
+  shortLabel: string;
+  stringMidi: Record<GuitarString, number>;
+  descriptionEn: string;
+  descriptionKo: string;
+}
+
+export interface VibratoMetrics {
+  widthCents: number; // peak-to-peak pitch excursion in cents
+  rateHz: number; // oscillation cycles per second
+  stabilityScore: number; // 0..100
+  isDetected: boolean;
+  samplesCents: number[]; // recent relative cent contour for live visualization
+}
 
 export type LessonCategory =
   | 'mechanics'
@@ -163,6 +182,8 @@ export interface NoteEvaluation {
   detectedMidi?: number;
   chordMatchRatio?: number;
   unmutedStringWarning?: boolean;
+  unmutedStringDetail?: string;
+  vibratoMetrics?: VibratoMetrics;
 }
 
 export interface SessionTelemetry {
@@ -210,6 +231,8 @@ export interface AudioDeviceConfig {
   latencyOffsetMs: number; // -50 to +200 ms
   inputGainDb?: number; // -18 to +18 dB
   autoCalibrateLatency?: boolean;
+  tuningProfile?: TuningProfileId;
+  capoFret?: number; // 0..7
   asioBridgeUrl: string;
 }
 
@@ -229,6 +252,35 @@ export interface LessonProgressRecord {
   highestTierCleared: JudgmentTier | null;
   bestBpm: number;
   earCopySolved: boolean;
+  lastPracticedAt?: string;
+  weakBarIndices?: number[];
+}
+
+export interface PracticeSessionRecord {
+  id: string;
+  lessonId: string;
+  mode: PracticeMode;
+  tier: JudgmentTier;
+  score: number;
+  grade: 'S' | 'A' | 'B' | 'C' | 'Retry';
+  pitchAccuracy: number;
+  timingAccuracy: number;
+  bpmPlayed: number;
+  avgTimingErrorMs?: number;
+  weakBarIndices?: number[];
+  passed: boolean;
+  createdAt: string;
+}
+
+export interface WeakBarDrillItem {
+  lessonId: string;
+  lessonCode: string;
+  lessonTitle: string;
+  barRange: [number, number];
+  startBpm: number;
+  targetBpm: number;
+  reason: 'weak-bar' | 'spaced-review';
+  daysSincePractice?: number;
 }
 
 export interface SkillRadarStats {

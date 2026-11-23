@@ -1,6 +1,13 @@
 'use client';
 
-import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import React, {
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  useSyncExternalStore,
+} from 'react';
 import { AnimatePresence, motion } from 'framer-motion';
 import { Surface, Tabs as HeroTabs } from '@heroui/react';
 import { Badge } from '@/components/ui/badge';
@@ -46,6 +53,7 @@ import {
 } from '@/data/curriculumData';
 import { useAuth } from '@/lib/auth';
 import {
+  analyzeVibratoContour,
   EMPTY_ADAPTIVE_LATENCY_PROFILE,
   evaluateImprovisation,
   evaluateNoteHit,
@@ -57,11 +65,17 @@ import {
 } from '@/lib/lowLatencyAudioEngine';
 import { guitarSynthEngine } from '@/lib/guitarSynthEngine';
 import { trackStudioEvent } from '@/lib/analytics';
-import { getFingerName, getNoteMidi, midiToNoteName } from '@/lib/musicTheory';
+import {
+  getFingerName,
+  getNoteMidi,
+  midiToNoteName,
+  setActiveTuning,
+} from '@/lib/musicTheory';
 import { useLocale } from '@/lib/i18n';
 import { buildSafeErrorEntry, type SafeErrorLogEntry } from '@/lib/errorSanitizer';
 import {
   fetchCloudProgress,
+  fetchPracticeSessions,
   mergeUserProgress,
   recordPracticeSession,
   upsertCloudProgress,
@@ -82,8 +96,12 @@ import type {
   LivePitchData,
   NoteEvaluation,
   PracticeMode,
+  PracticeSessionRecord,
   SessionTelemetry,
+  TuningProfileId,
   UserProgressState,
+  VibratoMetrics,
+  WeakBarDrillItem,
 } from '@/types/guitar';
 import {
   BookOpen,
@@ -102,6 +120,8 @@ import {
 const STORAGE_PROGRESS_KEY = 'fretmaster_studio_progress_v1';
 const STORAGE_AUDIO_KEY = 'fretmaster_studio_audio_v1';
 const STORAGE_LATENCY_PROFILE_KEY = 'fretmaster_adaptive_latency_v1';
+const STORAGE_SESSIONS_KEY = 'fretmaster_studio_sessions_v1';
+const GUEST_SANDBOX_LESSONS = new Set(['m1-1', 'm3-1', 'm4-1']);
 
 const DEFAULT_PROGRESS: UserProgressState = {
   lessonRecords: {},
@@ -144,9 +164,32 @@ interface FeedbackBanner {
 
 type BottomTabKey = 'tab' | 'lab';
 
+function subscribeStudioUrl(): () => void {
+  return () => {};
+}
+
+function getClientDemoFlag(): boolean {
+  try {
+    return new URLSearchParams(window.location.search).get('demo') === '1';
+  } catch {
+    return false;
+  }
+}
+
+function getServerDemoFlag(): boolean {
+  return false;
+}
+
 export function FretMasterStudioClient() {
-  const { user, isAdmin, loading, signOut } = useAuth();
+  const { user, isAdmin, loading, signInWithGoogle, signOut } = useAuth();
   const { tr } = useLocale();
+  const [guestDemoClicked, setGuestDemoClicked] = useState(false);
+  const urlDemoRequested = useSyncExternalStore(
+    subscribeStudioUrl,
+    getClientDemoFlag,
+    getServerDemoFlag
+  );
+  const isGuestSandbox = !user && (urlDemoRequested || guestDemoClicked);
 
   if (loading) {
     return (
@@ -159,28 +202,38 @@ export function FretMasterStudioClient() {
     );
   }
 
-  if (!user) {
-    return <AuthGateCard />;
+  if (!user && !isGuestSandbox) {
+    return <AuthGateCard onStartGuestDemo={() => setGuestDemoClicked(true)} />;
   }
 
   return (
     <AuthenticatedStudioWorkspace
-      key={user.id}
+      key={user?.id ?? 'guest-sandbox'}
       user={user}
+      isGuestMode={!user}
       isAdmin={isAdmin}
       onSignOut={signOut}
+      onGuestSignIn={(lessonId) =>
+        void signInWithGoogle(
+          lessonId ? `/studio?lesson=${encodeURIComponent(lessonId)}` : '/studio'
+        )
+      }
     />
   );
 }
 
 function AuthenticatedStudioWorkspace({
   user,
+  isGuestMode,
   isAdmin,
   onSignOut,
+  onGuestSignIn,
 }: {
-  user: User;
+  user: User | null;
+  isGuestMode: boolean;
   isAdmin: boolean;
   onSignOut: () => Promise<void>;
+  onGuestSignIn: (lessonId?: string) => void;
 }) {
   const [selectedLessonId, setSelectedLessonId] = useState<string>(ALL_LESSONS[0].id);
   const [practiceMode, setPracticeMode] = useState<PracticeMode>('guide');
@@ -248,6 +301,9 @@ function AuthenticatedStudioWorkspace({
   const [feedbackBanner, setFeedbackBanner] = useState<FeedbackBanner | null>(null);
   const [reportOpen, setReportOpen] = useState(false);
   const [lastTelemetry, setLastTelemetry] = useState<SessionTelemetry | null>(null);
+  const [practiceSessions, setPracticeSessions] = useState<PracticeSessionRecord[]>([]);
+  const [liveVibrato, setLiveVibrato] = useState<VibratoMetrics | null>(null);
+  const vibratoSamplesRef = useRef<{ timestampMs: number; centsOffset: number }[]>([]);
   const [examCountInBars, setExamCountInBars] = useState<number>(1);
   const [examAutoStart, setExamAutoStart] = useState<boolean>(true);
   const [countInState, setCountInState] = useState<{
@@ -413,10 +469,17 @@ function AuthenticatedStudioWorkspace({
 
     let requestedLessonParam: string | null = null;
     try {
-      const queryLesson = new URLSearchParams(window.location.search).get('lesson');
+      const urlParams = new URLSearchParams(window.location.search);
+      const queryLesson = urlParams.get('lesson');
       if (queryLesson && getLessonById(queryLesson)) {
         requestedLessonParam = queryLesson;
-        window.history.replaceState(null, '', window.location.pathname);
+        urlParams.delete('lesson');
+        const remainingQuery = urlParams.toString();
+        window.history.replaceState(
+          null,
+          '',
+          remainingQuery ? `${window.location.pathname}?${remainingQuery}` : window.location.pathname
+        );
       }
     } catch {
       // ignore URL query errors
@@ -458,12 +521,50 @@ function AuthenticatedStudioWorkspace({
       }
     }
 
+    try {
+      const savedSessions = window.localStorage.getItem(STORAGE_SESSIONS_KEY);
+      if (savedSessions) {
+        const parsedSessions = JSON.parse(savedSessions) as PracticeSessionRecord[];
+        if (Array.isArray(parsedSessions)) {
+          setPracticeSessions(parsedSessions.slice(0, 30));
+        }
+      }
+    } catch {
+      // ignore session storage errors
+    }
+
+    setActiveTuning(audioConfigRef.current.tuningProfile ?? 'standard', audioConfigRef.current.capoFret ?? 0);
+
+    if (isGuestMode || !user) {
+      const guestProgress: UserProgressState = {
+        ...localProgress,
+        freeExploreMode: true,
+        onboardingCompleted: true,
+      };
+      setProgress(guestProgress);
+      setSyncStatus('idle');
+      cloudHydratedRef.current = true;
+      setGuideDialogOpen(true);
+      return () => {
+        active = false;
+      };
+    }
+
     setProgress(localProgress);
     setSyncStatus('syncing');
 
-    fetchCloudProgress(user.id)
-      .then(async (cloud) => {
+    Promise.all([fetchCloudProgress(user.id), fetchPracticeSessions(user.id, 30)])
+      .then(async ([cloud, remoteSessions]) => {
         if (!active) return;
+
+        if (remoteSessions.length > 0) {
+          setPracticeSessions(remoteSessions);
+          try {
+            window.localStorage.setItem(STORAGE_SESSIONS_KEY, JSON.stringify(remoteSessions));
+          } catch {
+            // ignore
+          }
+        }
 
         const merged = mergeUserProgress(localProgress, cloud?.progress ?? null);
         const targetLessonId = requestedLessonParam || cloud?.lastLessonId || ALL_LESSONS[0].id;
@@ -489,7 +590,9 @@ function AuthenticatedStudioWorkspace({
 
         if (cloud?.audioConfig) {
           guitarAudioEngine.updateConfig(cloud.audioConfig);
-          setAudioConfig(guitarAudioEngine.getConfig());
+          const synced = guitarAudioEngine.getConfig();
+          setAudioConfig(synced);
+          setActiveTuning(synced.tuningProfile ?? 'standard', synced.capoFret ?? 0);
         }
 
         try {
@@ -554,7 +657,12 @@ function AuthenticatedStudioWorkspace({
     return () => {
       active = false;
     };
-  }, [pushSafeError, tr, user.id]);
+  }, [isGuestMode, pushSafeError, tr, user]);
+
+  // Keep active tuning & virtual capo synced to musicTheory engine
+  useEffect(() => {
+    setActiveTuning(audioConfig.tuningProfile ?? 'standard', audioConfig.capoFret ?? 0);
+  }, [audioConfig.capoFret, audioConfig.tuningProfile]);
 
   // Persist local cache & debounce-sync updates to Supabase PostgreSQL
   useEffect(() => {
@@ -564,7 +672,7 @@ function AuthenticatedStudioWorkspace({
       // ignore
     }
 
-    if (!cloudHydratedRef.current) return;
+    if (!cloudHydratedRef.current || isGuestMode || !user) return;
 
     setSyncStatus('syncing');
     const timeoutId = window.setTimeout(() => {
@@ -593,7 +701,7 @@ function AuthenticatedStudioWorkspace({
     }, 800);
 
     return () => window.clearTimeout(timeoutId);
-  }, [audioConfig, progress, pushSafeError, selectedLessonId, tr, user.id]);
+  }, [audioConfig, isGuestMode, progress, pushSafeError, selectedLessonId, tr, user]);
 
   useEffect(() => {
     if (!isPlaying && !isAudioRunning) return;
@@ -697,6 +805,18 @@ function AuthenticatedStudioWorkspace({
 
   const handleSelectLesson = useCallback(
     (next: Lesson) => {
+      if (isGuestMode && !GUEST_SANDBOX_LESSONS.has(next.id)) {
+        setFeedbackBanner({
+          result: 'good',
+          title: tr('Sign In to Unlock All 39 Lessons', 'Google 로그인 후 39강 전체 해금'),
+          detail: tr(
+            `Guest preview includes 1-1, 3-1, and 4-1. Sign in free to open Lesson ${next.code}.`,
+            `체험 모드에서는 1-1, 3-1, 4-1 레슨이 열려 있습니다. 무료 로그인 후 ${next.code} 레슨을 바로 시작하세요.`
+          ),
+        });
+        onGuestSignIn(next.id);
+        return;
+      }
       if (rawLesson.skipExam && next.id === getNextLesson(rawLesson.id)?.id) {
         completeWarmupLesson(rawLesson);
       }
@@ -733,7 +853,23 @@ function AuthenticatedStudioWorkspace({
         setEnableGuideGuitar(true);
       }
     },
-    [completeWarmupLesson, rawLesson, resetSessionState]
+    [completeWarmupLesson, isGuestMode, onGuestSignIn, rawLesson, resetSessionState, tr]
+  );
+
+  const handleTuningChange = useCallback(
+    (profile: TuningProfileId, capoFret: number) => {
+      setActiveTuning(profile, capoFret);
+      guitarAudioEngine.updateConfig({ tuningProfile: profile, capoFret });
+      const nextCfg = guitarAudioEngine.getConfig();
+      audioConfigRef.current = nextCfg;
+      setAudioConfig(nextCfg);
+      try {
+        window.localStorage.setItem(STORAGE_AUDIO_KEY, JSON.stringify(nextCfg));
+      } catch {
+        // ignore
+      }
+    },
+    []
   );
 
   const handleAdvanceToNextLesson = useCallback(() => {
@@ -821,7 +957,34 @@ function AuthenticatedStudioWorkspace({
 
       setLastTelemetry(report);
       setReportOpen(true);
-      void recordPracticeSession(user.id, report);
+      const nowIso = new Date().toISOString();
+      const newSessionRecord: PracticeSessionRecord = {
+        id: `local-${Date.now()}`,
+        lessonId: lesson.id,
+        mode: practiceMode,
+        tier: judgmentTier,
+        score,
+        grade,
+        pitchAccuracy,
+        timingAccuracy,
+        bpmPlayed: bpm,
+        avgTimingErrorMs: report.avgTimingErrorMs,
+        weakBarIndices,
+        passed,
+        createdAt: nowIso,
+      };
+      setPracticeSessions((prev) => {
+        const updated = [newSessionRecord, ...prev].slice(0, 30);
+        try {
+          window.localStorage.setItem(STORAGE_SESSIONS_KEY, JSON.stringify(updated));
+        } catch {
+          // ignore
+        }
+        return updated;
+      });
+      if (user) {
+        void recordPracticeSession(user.id, report);
+      }
       trackStudioEvent('exam_completed', {
         lesson_id: lesson.id,
         tier: judgmentTier,
@@ -843,6 +1006,8 @@ function AuthenticatedStudioWorkspace({
           [lesson.id]: {
             completed: nextCompleted,
             bestScore: Math.max(existing?.bestScore ?? 0, score),
+            lastPracticedAt: nowIso,
+            weakBarIndices: weakBarIndices.length > 0 ? weakBarIndices : existing?.weakBarIndices,
             bestGrade:
               existing?.bestScore && existing.bestScore > score ? existing.bestGrade : grade,
             highestTierCleared: passed ? judgmentTier : existing?.highestTierCleared ?? null,
@@ -875,7 +1040,7 @@ function AuthenticatedStudioWorkspace({
         };
       });
     },
-    [bpm, judgmentTier, lesson, practiceMode, user.id]
+    [bpm, judgmentTier, lesson, practiceMode, user]
   );
 
   const handleUpdateAudioConfig = useCallback((partial: Partial<AudioDeviceConfig>) => {
@@ -1408,10 +1573,15 @@ function AuthenticatedStudioWorkspace({
           result: ev.result,
           title: tr('Nice', '좋아요'),
           detail: ev.unmutedStringWarning
-            ? tr(
-                'Chord matched · mute unused low strings',
-                '코드 인식 완료 · 치지 않는 저음현을 뮤트해 보세요'
-              )
+            ? ev.unmutedStringDetail
+              ? tr(
+                  `Matched · mute unplayed ${ev.unmutedStringDetail} string`,
+                  `인식 완료 · 치지 않는 ${ev.unmutedStringDetail} 개방현을 뮤트해 보세요`
+                )
+              : tr(
+                  'Chord matched · mute unused low strings',
+                  '코드 인식 완료 · 치지 않는 저음현을 뮤트해 보세요'
+                )
             : tr(
                 `String ${targetNote.string}, Fret ${targetNote.fret} recognized`,
                 `${targetNote.string}번 줄 ${targetNote.fret}프렛 인식 완료`
@@ -1793,7 +1963,12 @@ function AuthenticatedStudioWorkspace({
         ev.result === 'miss' && isClosestChord
           ? tr('Check chord shape and clean strum', '코드 운지와 스트럼 울림을 확인해 보세요')
           : ev.unmutedStringWarning && ev.result !== 'miss'
-          ? tr('Hit · mute unused low strings', '정확해요 · 치지 않는 저음현 뮤트 확인')
+          ? ev.unmutedStringDetail
+            ? tr(
+                `Hit · mute unplayed ${ev.unmutedStringDetail} string`,
+                `정확해요 · 치지 않는 ${ev.unmutedStringDetail} 개방현 뮤트 확인`
+              )
+            : tr('Hit · mute unused low strings', '정확해요 · 치지 않는 저음현 뮤트 확인')
           : Math.abs(ev.timingErrorMs) <= 20
           ? tr('On beat', '정확한 박자')
           : ev.timingErrorMs < 0
@@ -2116,6 +2291,35 @@ function AuthenticatedStudioWorkspace({
     return lesson.postureGuide.leftHandTip;
   }, [activeNote, currentChordBar, feedbackBanner, lesson.postureGuide.leftHandTip, locale, practiceMode, tr]);
 
+  // Track live vibrato pitch contour on sustained expressive notes (e.g., 6-4, 8-3, 8-4)
+  useEffect(() => {
+    const isVibratoContext =
+      lesson.id === 'm6-4' ||
+      lesson.id === 'm8-3' ||
+      lesson.id === 'm8-4' ||
+      lesson.notes.some((n) => n.technique === 'vibrato');
+
+    if (!isVibratoContext || !livePitch.isActive || livePitch.midiFloat <= 0) {
+      if (vibratoSamplesRef.current.length > 0) {
+        vibratoSamplesRef.current = [];
+        setLiveVibrato(null);
+      }
+      return;
+    }
+
+    const nowMs = livePitch.timestampMs || performance.now();
+    const baseMidi = Math.round(livePitch.midiFloat);
+    const centsOffset = (livePitch.midiFloat - baseMidi) * 100;
+    const recent = vibratoSamplesRef.current.filter((s) => nowMs - s.timestampMs <= 900);
+    recent.push({ timestampMs: nowMs, centsOffset });
+    vibratoSamplesRef.current = recent.slice(-36);
+
+    if (recent.length >= 8) {
+      const metrics = analyzeVibratoContour(recent);
+      setLiveVibrato(metrics.isDetected ? metrics : null);
+    }
+  }, [lesson.id, lesson.notes, livePitch.isActive, livePitch.midiFloat, livePitch.timestampMs]);
+
   const showFourthLabTab = lesson.supportsEarCopy || lesson.supportsJam || !isPhase1;
 
   return (
@@ -2133,17 +2337,24 @@ function AuthenticatedStudioWorkspace({
           onOpenOnboarding={() => setOnboardingOpen(true)}
           themePreference={themePreference}
           onThemeChange={setThemePreference}
-          user={{
-            email: user.email,
-            name:
-              (user.user_metadata?.full_name as string | undefined) ??
-              (user.user_metadata?.name as string | undefined),
-            avatarUrl:
-              (user.user_metadata?.avatar_url as string | undefined) ??
-              (user.user_metadata?.picture as string | undefined),
-          }}
+          user={
+            user
+              ? {
+                  email: user.email,
+                  name:
+                    (user.user_metadata?.full_name as string | undefined) ??
+                    (user.user_metadata?.name as string | undefined),
+                  avatarUrl:
+                    (user.user_metadata?.avatar_url as string | undefined) ??
+                    (user.user_metadata?.picture as string | undefined),
+                }
+              : {
+                  email: tr('Guest Preview (1-1 · 3-1 · 4-1)', '무료 체험 중 (1-1 · 3-1 · 4-1)'),
+                  name: tr('Guest Mode', '체험 모드'),
+                }
+          }
           syncStatus={syncStatus}
-          onSignOut={() => void onSignOut()}
+          onSignOut={() => (isGuestMode ? onGuestSignIn(lesson.id) : void onSignOut())}
           errorLogCount={errorLogs.length}
           onOpenErrorModal={() => setErrorModalOpen(true)}
           isAdmin={isAdmin}
@@ -2151,6 +2362,52 @@ function AuthenticatedStudioWorkspace({
 
         {/* ==================== 2. CENTER MAIN WORKSPACE ==================== */}
         <main className="min-w-0 px-4 sm:px-7 py-5 space-y-5">
+          {/* Guest Sandbox Trial Banner */}
+          {isGuestMode && (
+            <div className="rounded-xl border border-primary/35 bg-accent-soft px-4 py-2.5 flex flex-wrap items-center justify-between gap-3">
+              <div className="flex flex-wrap items-center gap-2 text-xs text-foreground">
+                <Badge variant="default" className="font-mono text-[10px]">
+                  {tr('GUEST SANDBOX', '무료 체험 모드')}
+                </Badge>
+                <span className="font-medium">
+                  {tr(
+                    'Try starter lessons right away. Sign in with Google to unlock all 39 lessons and cloud save.',
+                    '로그인 없이 대표 3강을 체험 중입니다. Google 로그인으로 39강 전체와 진도 저장을 여세요.'
+                  )}
+                </span>
+                <div className="inline-flex items-center gap-1">
+                  {(['m1-1', 'm3-1', 'm4-1'] as const).map((id) => {
+                    const item = getLessonById(id);
+                    if (!item) return null;
+                    const active = lesson.id === id;
+                    return (
+                      <button
+                        key={id}
+                        type="button"
+                        onClick={() => handleSelectLesson(item)}
+                        className={`rounded-md px-2 py-0.5 font-mono text-[11px] font-semibold border transition-colors ${
+                          active
+                            ? 'border-primary bg-primary text-primary-foreground'
+                            : 'border-border bg-card text-foreground hover:border-primary/50'
+                        }`}
+                      >
+                        {item.code}
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+              <Button
+                type="button"
+                size="sm"
+                onClick={() => onGuestSignIn(lesson.id)}
+                className="rounded-lg text-xs font-semibold shrink-0"
+              >
+                {tr('Save & Unlock 39 Lessons', 'Google 로그인 · 39강 열기')}
+              </Button>
+            </div>
+          )}
+
           {/* Minimal 1-Line Top Bar: Breadcrumb + Audio Status */}
           <div className="flex flex-wrap items-center justify-between gap-3">
             <nav className="flex items-center gap-1.5 text-xs text-muted-foreground">
@@ -2173,6 +2430,41 @@ function AuthenticatedStudioWorkspace({
               onOpenErrorModal={() => setErrorModalOpen(true)}
             />
           </div>
+
+          {/* Live Vibrato Pitch-Contour Coaching Bar (shown when vibrato is detected) */}
+          {liveVibrato?.isDetected && (
+            <div className="rounded-xl border border-primary/35 bg-card px-4 py-2 flex flex-wrap items-center justify-between gap-3">
+              <div className="flex items-center gap-2 text-xs">
+                <span className="h-2 w-2 rounded-full bg-primary" />
+                <span className="font-semibold text-foreground">
+                  {tr('Live Vibrato Contour', '실시간 비브라토 피치 궤적')}
+                </span>
+                <span className="font-mono text-primary font-semibold tabular-nums">
+                  ±{Math.round(liveVibrato.widthCents / 2)}c · {liveVibrato.rateHz} Hz
+                </span>
+                <span className="text-muted-foreground">
+                  ({tr(`Stability ${liveVibrato.stabilityScore}%`, `안정도 ${liveVibrato.stabilityScore}%`)})
+                </span>
+              </div>
+              <svg viewBox="0 0 120 24" className="w-28 h-6 overflow-visible" aria-hidden="true">
+                <line x1="0" y1="12" x2="120" y2="12" stroke="var(--border)" strokeDasharray="3 3" />
+                <polyline
+                  fill="none"
+                  stroke="var(--primary)"
+                  strokeWidth="2"
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  points={liveVibrato.samplesCents
+                    .map((c, idx, arr) => {
+                      const x = (idx / Math.max(1, arr.length - 1)) * 120;
+                      const y = Math.max(2, Math.min(22, 12 - (c / 60) * 10));
+                      return `${x.toFixed(1)},${y.toFixed(1)}`;
+                    })
+                    .join(' ')}
+                />
+              </svg>
+            </div>
+          )}
 
           {/* Primary Viewport: Electric Guitar Fretboard + Integrated Player Bar */}
           <ElectricFretboard
@@ -2206,6 +2498,8 @@ function AuthenticatedStudioWorkspace({
             countInState={countInState}
             autoStartArmed={isExamAutoStartArmed}
             autoStartImmediate={examCountInBars === 0}
+            tuningProfile={audioConfig.tuningProfile ?? 'standard'}
+            capoFret={audioConfig.capoFret ?? 0}
           />
 
           {/* Lesson Title (No Subtitle) + Primary Action CTA */}
@@ -2706,9 +3000,9 @@ function AuthenticatedStudioWorkspace({
         open={onboardingOpen}
         onOpenChange={setOnboardingOpen}
         userName={
-          (user.user_metadata?.full_name as string | undefined) ??
-          (user.user_metadata?.name as string | undefined) ??
-          user.email?.split('@')[0]
+          (user?.user_metadata?.full_name as string | undefined) ??
+          (user?.user_metadata?.name as string | undefined) ??
+          user?.email?.split('@')[0]
         }
         initialFreeExplore={progress.freeExploreMode}
         initialDailyGoalSeconds={progress.dailyGoalSeconds}
@@ -2752,6 +3046,9 @@ function AuthenticatedStudioWorkspace({
         livePitch={livePitch}
         isAudioRunning={isAudioRunning}
         onStartAudio={handleToggleAudio}
+        tuningProfile={audioConfig.tuningProfile ?? 'standard'}
+        capoFret={audioConfig.capoFret ?? 0}
+        onTuningChange={handleTuningChange}
       />
 
       <AudioInterfaceModal
@@ -2772,6 +3069,17 @@ function AuthenticatedStudioWorkspace({
         open={analyticsOpen}
         onOpenChange={setAnalyticsOpen}
         progress={progress}
+        sessions={practiceSessions}
+        onStartDrill={(item: WeakBarDrillItem) => {
+          const target = getLessonById(item.lessonId);
+          if (!target) return;
+          handleSelectLesson(target);
+          setGuideDialogOpen(false);
+          setPracticeMode('loop');
+          setLoopRangeBars(item.barRange);
+          setBpm(item.startBpm);
+          setAutoSpeedUp(true);
+        }}
       />
 
       <MasteryReportDialog

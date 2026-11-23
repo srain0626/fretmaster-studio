@@ -9,10 +9,14 @@ import {
 } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
-import { TUNING_OPEN_STRINGS } from '@/lib/musicTheory';
+import {
+  getTuningOpenStrings,
+  TUNING_PROFILE_LIST,
+  TUNING_PROFILES,
+} from '@/lib/musicTheory';
 import { guitarSynthEngine } from '@/lib/guitarSynthEngine';
 import { useLocale } from '@/lib/i18n';
-import type { LivePitchData } from '@/types/guitar';
+import type { LivePitchData, TuningProfileId } from '@/types/guitar';
 import { Volume2 } from 'lucide-react';
 
 interface ChromaticTunerDialogProps {
@@ -21,6 +25,9 @@ interface ChromaticTunerDialogProps {
   livePitch: LivePitchData;
   isAudioRunning: boolean;
   onStartAudio: () => void;
+  tuningProfile?: TuningProfileId;
+  capoFret?: number;
+  onTuningChange?: (profile: TuningProfileId, capoFret: number) => void;
 }
 
 export function ChromaticTunerDialog({
@@ -29,15 +36,20 @@ export function ChromaticTunerDialog({
   livePitch,
   isAudioRunning,
   onStartAudio,
+  tuningProfile = 'standard',
+  capoFret = 0,
+  onTuningChange,
 }: ChromaticTunerDialogProps) {
-  const { tr } = useLocale();
+  const { locale, tr } = useLocale();
+  const openStrings = getTuningOpenStrings(tuningProfile, capoFret);
+  const activeProfile = TUNING_PROFILES[tuningProfile] ?? TUNING_PROFILES.standard;
   const hasTunerPitch = livePitch.isActive && livePitch.frequency > 0 && livePitch.midiFloat > 0;
   const cents = Math.max(-50, Math.min(50, livePitch.centsOff));
   const needleAngleDeg = (cents / 50) * 58;
   const isInTune = hasTunerPitch && Math.abs(cents) <= 5;
 
   const nearestOpenString = hasTunerPitch
-    ? TUNING_OPEN_STRINGS.reduce((best, cur) =>
+    ? openStrings.reduce((best, cur) =>
         Math.abs(cur.midi - livePitch.midiFloat) < Math.abs(best.midi - livePitch.midiFloat)
           ? cur
           : best
@@ -46,12 +58,68 @@ export function ChromaticTunerDialog({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="sm:max-w-md">
+      <DialogContent className="sm:max-w-lg">
         <DialogHeader>
-          <DialogTitle className="text-base font-semibold">
-            {tr('Chromatic Tuner', '크로매틱 튜너')}
+          <DialogTitle className="text-base font-semibold flex items-center justify-between gap-2 pr-6">
+            <span>{tr('Chromatic Tuner & Tuning', '크로매틱 튜너 · 변칙 튜닝')}</span>
+            <Badge variant="secondary" className="font-mono text-[11px]">
+              {activeProfile.shortLabel}
+              {capoFret > 0 ? ` · Capo ${capoFret}F` : ''}
+            </Badge>
           </DialogTitle>
         </DialogHeader>
+
+        {/* Alternate Tuning & Virtual Capo Selector */}
+        {onTuningChange && (
+          <div className="rounded-xl border border-border bg-secondary/35 p-3 space-y-2.5">
+            <div className="flex flex-wrap gap-1.5">
+              {TUNING_PROFILE_LIST.map((profile) => {
+                const selected = profile.id === tuningProfile;
+                return (
+                  <button
+                    key={profile.id}
+                    type="button"
+                    onClick={() => onTuningChange(profile.id, capoFret)}
+                    className={`rounded-lg border px-2.5 py-1 text-[11px] font-semibold transition-colors ${
+                      selected
+                        ? 'border-primary bg-primary text-primary-foreground'
+                        : 'border-border bg-card text-muted-foreground hover:text-foreground'
+                    }`}
+                  >
+                    {locale === 'en' ? profile.name : profile.labelKo}
+                  </button>
+                );
+              })}
+            </div>
+
+            <div className="flex items-center justify-between gap-2 pt-1 border-t border-border/60">
+              <div className="text-[11px] text-muted-foreground leading-snug">
+                {locale === 'en' ? activeProfile.descriptionEn : activeProfile.descriptionKo}
+              </div>
+              <div className="flex items-center gap-1 shrink-0">
+                <span className="text-[11px] font-medium text-muted-foreground">
+                  {tr('Capo', '카포')}
+                </span>
+                <div className="inline-flex items-center rounded-lg border border-border bg-card p-0.5">
+                  {[0, 1, 2, 3, 4, 5].map((fret) => (
+                    <button
+                      key={fret}
+                      type="button"
+                      onClick={() => onTuningChange(tuningProfile, fret)}
+                      className={`rounded-md px-1.5 py-0.5 font-mono text-[11px] font-semibold transition-colors ${
+                        capoFret === fret
+                          ? 'bg-foreground text-background'
+                          : 'text-muted-foreground hover:text-foreground'
+                      }`}
+                    >
+                      {fret === 0 ? tr('Off', '없음') : `${fret}F`}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
 
         {!isAudioRunning && (
           <div className="rounded-lg border border-border bg-secondary/60 p-3 flex items-center justify-between">
@@ -142,7 +210,7 @@ export function ChromaticTunerDialog({
         </div>
 
         <div className="grid grid-cols-6 gap-1.5">
-          {TUNING_OPEN_STRINGS.map((st) => {
+          {openStrings.map((st) => {
             const isDetected =
               nearestOpenString?.string === st.string &&
               Math.abs(nearestOpenString.midi - livePitch.midiFloat) < 1.5;

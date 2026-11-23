@@ -14,6 +14,7 @@ import {
 import { STUDIO_SPRING } from '@/components/motion/StudioMotion';
 import {
   findPossiblePositionsForMidi,
+  getEffectiveOpenStringMidi,
   getFingerColorHex,
   getIntervalLabel,
   getNoteMidi,
@@ -33,6 +34,7 @@ import type {
   PhaseId,
   PracticeMode,
   ScaleOverlayNote,
+  TuningProfileId,
 } from '@/types/guitar';
 import { Maximize2, Minimize2, Pause, Play, RotateCcw } from 'lucide-react';
 
@@ -68,6 +70,8 @@ interface ElectricFretboardProps {
   countInState?: { remaining: number; current: number; total: number } | null;
   autoStartArmed?: boolean;
   autoStartImmediate?: boolean;
+  tuningProfile?: TuningProfileId;
+  capoFret?: number;
 }
 
 const TOTAL_FRETS = 22;
@@ -114,6 +118,8 @@ export function ElectricFretboard({
   countInState = null,
   autoStartArmed = false,
   autoStartImmediate = false,
+  tuningProfile = 'standard',
+  capoFret = 0,
 }: ElectricFretboardProps) {
   const { tr } = useLocale();
   const [zoomFocus, setZoomFocus] = useState(true);
@@ -470,7 +476,15 @@ export function ElectricFretboard({
                   textAnchor="middle"
                   className="fill-muted-foreground text-[11px] font-mono font-medium"
                 >
-                  {STRING_NAMES[str]}
+                  {(() => {
+                    if (tuningProfile === 'standard' && capoFret === 0) {
+                      return STRING_NAMES[str];
+                    }
+                    const pc = midiToPitchClassName(
+                      getEffectiveOpenStringMidi(str, tuningProfile, capoFret)
+                    );
+                    return str === 1 ? pc.toLowerCase() : pc;
+                  })()}
                 </text>
                 <line
                   x1={leftMargin}
