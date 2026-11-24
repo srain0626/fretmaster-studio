@@ -38,6 +38,6 @@
 1. Run [`supabase/schema.sql`](../supabase/schema.sql) inside **Supabase Dashboard -> SQL Editor**.
 2. Enable **Google** in **Authentication -> Providers** (configure Google Cloud OAuth Client ID/Secret and authorized callback `https://<PROJECT_REF>.supabase.co/auth/v1/callback`).
 3. In Supabase **Authentication -> URL Configuration**:
-   - Site URL: `https://fretmaster-studio.vercel.app`
-   - Redirect URLs: `https://fretmaster-studio.vercel.app/auth/callback`, `http://localhost:3000/auth/callback`
+   - Site URL: `https://fretmasterstudio.seltium.xyz`
+   - Redirect URLs: `https://fretmasterstudio.seltium.xyz/auth/callback`, `https://fretmaster-studio.vercel.app/auth/callback`, `http://localhost:3000/auth/callback`
 4. Add `NEXT_PUBLIC_SUPABASE_URL` and `NEXT_PUBLIC_SUPABASE_ANON_KEY` to `.env.local` (dev) and **Vercel Project Settings -> Environment Variables** (Production & Preview).

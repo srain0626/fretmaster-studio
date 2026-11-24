@@ -16,7 +16,7 @@
 </p>
 
 <p align="center">
-  <a href="https://fretmaster-studio.vercel.app"><strong>Live App</strong></a> &middot;
+  <a href="https://fretmasterstudio.seltium.xyz"><strong>Live App</strong></a> &middot;
   <a href="#architecture--audio-pipeline">Audio &amp; DSP</a> &middot;
   <a href="#judgment-engine--practice-modes">Grading &amp; Modes</a> &middot;
   <a href="#curriculum--motion-guides">Curriculum</a> &middot;

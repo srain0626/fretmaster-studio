@@ -5,6 +5,7 @@ import { TooltipProvider } from "@/components/ui/tooltip";
 import { PageViewTracker } from "@/components/analytics/PageViewTracker";
 import { AuthProvider } from "@/lib/auth";
 import { LocaleProvider } from "@/lib/i18n";
+import { SITE_URL } from "@/lib/siteConfig";
 import "./globals.css";
 
 const plusJakarta = Plus_Jakarta_Sans({
@@ -21,7 +22,6 @@ const jetbrainsMono = JetBrains_Mono({
   display: "swap",
 });
 
-const SITE_URL = "https://fretmaster-studio.vercel.app";
 const GTM_ID = process.env.NEXT_PUBLIC_GTM_ID || "GTM-5PHL3X34";
 const GOOGLE_TAG_INIT_SCRIPT = `
 window.dataLayer = window.dataLayer || [];
