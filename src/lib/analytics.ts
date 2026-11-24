@@ -5,6 +5,7 @@ type AnalyticsParamValue = string | number | boolean;
 declare global {
   interface Window {
     dataLayer?: Record<string, unknown>[];
+    gtag?: (...args: unknown[]) => void;
   }
 }
 
@@ -81,10 +82,23 @@ export function trackStudioEvent(
   params?: Record<string, AnalyticsParamValue>
 ): void {
   if (typeof window === 'undefined') return;
+
+  const isRoutePageView = event === 'page_view';
+
+  if (!isRoutePageView) {
+    try {
+      if (typeof window.gtag === 'function') {
+        window.gtag('event', event, params ?? {});
+      }
+    } catch {
+      // ignore gtag script restrictions
+    }
+  }
+
   try {
     window.dataLayer = window.dataLayer || [];
     window.dataLayer.push({
-      event,
+      event: isRoutePageView ? 'studio_route_view' : event,
       ...params,
     });
   } catch {

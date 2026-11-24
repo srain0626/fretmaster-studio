@@ -15,6 +15,7 @@
     "@base-ui/react": "^1.9.0",
     "@heroui/react": "^3.2.7",
     "@heroui/styles": "^3.2.7",
+    "@next/third-parties": "^16.4.6",
     "@remotion/player": "^4.0.545",
     "@supabase/ssr": "^0.12.7",
     "@supabase/supabase-js": "^2.119.2",

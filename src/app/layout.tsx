@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import { JetBrains_Mono, Plus_Jakarta_Sans } from "next/font/google";
+import { GoogleAnalytics } from "@next/third-parties/google";
 import "pretendard/dist/web/variable/pretendardvariable-dynamic-subset.css";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { PageViewTracker } from "@/components/analytics/PageViewTracker";
@@ -22,7 +23,9 @@ const jetbrainsMono = JetBrains_Mono({
   display: "swap",
 });
 
-const GTM_ID = process.env.NEXT_PUBLIC_GTM_ID || "GTM-5PHL3X34";
+const GA_ID = process.env.NEXT_PUBLIC_GA_ID?.trim();
+const GTM_ID = (process.env.NEXT_PUBLIC_GTM_ID ?? "GTM-5PHL3X34").trim();
+const GOOGLE_SITE_VERIFICATION = process.env.NEXT_PUBLIC_GOOGLE_SITE_VERIFICATION?.trim();
 const GOOGLE_TAG_INIT_SCRIPT = `
 window.dataLayer = window.dataLayer || [];
 function gtag(){dataLayer.push(arguments);}
@@ -72,6 +75,13 @@ export const metadata: Metadata = {
       "max-video-preview": -1,
     },
   },
+  ...(GOOGLE_SITE_VERIFICATION
+    ? {
+        verification: {
+          google: GOOGLE_SITE_VERIFICATION,
+        },
+      }
+    : {}),
   openGraph: {
     type: "website",
     url: SITE_URL,
@@ -105,6 +115,11 @@ const JSON_LD = {
       name: "FretMaster Studio",
       alternateName: "FretMaster",
       url: `${SITE_URL}/`,
+      isPartOf: {
+        "@type": "WebSite",
+        name: "seltum.xyz",
+        url: "https://seltum.xyz",
+      },
     },
     {
       "@type": "WebApplication",
@@ -158,7 +173,7 @@ export default function RootLayout({
       className={`${plusJakarta.variable} ${jetbrainsMono.variable} h-full antialiased`}
     >
       <head>
-        {GTM_ID && (
+        {!GA_ID && GTM_ID && (
           <>
             <script
               async
@@ -174,7 +189,7 @@ export default function RootLayout({
         />
       </head>
       <body className="min-h-full flex flex-col bg-background text-foreground font-sans selection:bg-primary/15 selection:text-foreground">
-        {GTM_ID && (
+        {!GA_ID && GTM_ID && (
           <noscript>
             <iframe
               src={`https://www.googletagmanager.com/ns.html?id=${GTM_ID}`}
@@ -192,6 +207,7 @@ export default function RootLayout({
           </AuthProvider>
         </LocaleProvider>
       </body>
+      {GA_ID ? <GoogleAnalytics gaId={GA_ID} /> : null}
     </html>
   );
 }
