@@ -1,7 +1,7 @@
 blank_issues_enabled: true
 contact_links:
   - name: Live Studio Deployment
-    url: https://fretmasterstudio.seltium.xyz
+    url: https://fretmasterstudio.seltum.xyz
     about: Test behavior against the current production build before filing an issue
   - name: Milestone Roadmap
     url: https://github.com/srain0626/fretmaster-studio/blob/main/ROADMAP.md

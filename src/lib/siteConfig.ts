@@ -1,4 +1,4 @@
-export const PRIMARY_SITE_URL = "https://fretmasterstudio.seltium.xyz";
+export const PRIMARY_SITE_URL = "https://fretmasterstudio.seltum.xyz";
 export const FALLBACK_VERCEL_URL = "https://fretmaster-studio.vercel.app";
 
 export function resolveSiteUrl(rawUrl?: string | null): string {

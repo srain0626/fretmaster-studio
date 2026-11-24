@@ -1,6 +1,6 @@
 # FretMaster Studio Roadmap
 
-> **Current Production Baseline:** `v0.4.0` (`https://fretmasterstudio.seltium.xyz` · fallback `https://fretmaster-studio.vercel.app`)  
+> **Current Production Baseline:** `v0.4.0` (`https://fretmasterstudio.seltum.xyz` · fallback `https://fretmaster-studio.vercel.app`)  
 > FretMaster Studio evolves transparently in lockstep with open GitHub Milestones and Issues (`#1`–`#6`), linking real learner funnel insights directly to upcoming pedagogy, sound, and creator milestones.
 
 ```mermaid

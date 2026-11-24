@@ -49,7 +49,7 @@ GuitarTeacher/
     ├── types/guitar.ts               # Canonical domain & telemetry interfaces
     ├── lib/
     │   ├── supabase/                 # Browser & SSR Supabase client helpers
-    │   ├── siteConfig.ts             # Canonical SITE_URL (fretmasterstudio.seltium.xyz) & env resolver
+    │   ├── siteConfig.ts             # Canonical SITE_URL (fretmasterstudio.seltum.xyz) & env resolver
     │   ├── auth.tsx                  # AuthProvider, Google OAuth sign-in (`?next=`), admin check
     │   ├── adminAuth.ts              # Server-side admin RBAC verification helpers
     │   ├── analytics.ts              # Privacy-safe GTM `dataLayer` + `/api/telemetry` emitter

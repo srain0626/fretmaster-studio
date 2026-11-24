@@ -16,7 +16,7 @@
 </p>
 
 <p align="center">
-  <a href="https://fretmasterstudio.seltium.xyz"><strong>라이브 앱</strong></a> &middot;
+  <a href="https://fretmasterstudio.seltum.xyz"><strong>라이브 앱</strong></a> &middot;
   <a href="#오디오-수집-및-dsp-아키텍처">오디오 &amp; DSP</a> &middot;
   <a href="#판정-엔진과-연습-모드">판정 &amp; 연습 모드</a> &middot;
   <a href="#커리큘럼과-모션-가이드">커리큘럼</a> &middot;
