@@ -23,6 +23,7 @@
 | `public.user_progress` | `lesson_records`, `skills`, streaks, `free_explore_mode`, `last_lesson_id`, `audio_config` | `auth.uid() = user_id` |
 | `public.practice_sessions` | Append-only completed Exam telemetry log | `auth.uid() = user_id` |
 | `public.analytics_events` | First-party funnel & page-view telemetry (`/api/telemetry`) | Insert allowed; admin-only read via `is_admin_user()` / `get_admin_dashboard_stats()` |
+| `public.bug_reports` | User-submitted bug reports with optional sanitized diagnostics (`POST /api/bug-reports`, `/api/admin/bug-reports`) | Insert allowed for anon & users; admin-only select/update via `is_admin_user()` |
 
 - `handle_new_user()` trigger on `auth.users` insert automatically creates `profiles` and `user_progress` rows.
 

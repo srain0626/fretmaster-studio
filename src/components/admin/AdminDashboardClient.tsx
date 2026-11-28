@@ -6,11 +6,13 @@ import { BrandFretLogo } from '@/components/icons/GuitarSvgIcons';
 import { Button } from '@/components/ui/button';
 import { ALL_LESSONS, localizeLesson } from '@/data/curriculumData';
 import { useAuth } from '@/lib/auth';
+import type { BugReportRecord, BugReportStatus } from '@/lib/bugReport';
 import { useLocale } from '@/lib/i18n';
 import { useThemePreference } from '@/lib/theme';
 import {
   ArrowLeft,
   BarChart3,
+  Bug,
   Clock,
   Database,
   Lock,
@@ -233,16 +235,21 @@ export function AdminDashboardClient() {
 
   const [lessonSort, setLessonSort] = useState<'popular' | 'lowestPass'>('popular');
   const [userSearch, setUserSearch] = useState('');
-  const [activityTab, setActivityTab] = useState<'events' | 'sessions'>('events');
+  const [activityTab, setActivityTab] = useState<'events' | 'sessions' | 'bugs'>('events');
   const [eventFilter, setEventFilter] = useState<string>('ALL');
+  const [bugReports, setBugReports] = useState<BugReportRecord[]>([]);
+  const [openBugCount, setOpenBugCount] = useState(0);
+  const [bugStatusFilter, setBugStatusFilter] = useState<'all' | BugReportStatus>('all');
+  const [updatingBugId, setUpdatingBugId] = useState<string | null>(null);
 
   const loadStats = useCallback(async (rangeDays: number) => {
     setFetching(true);
     setErrorState(null);
     try {
-      const res = await fetch(`/api/admin/stats?days=${rangeDays}`, {
-        cache: 'no-store',
-      });
+      const [res, bugsRes] = await Promise.all([
+        fetch(`/api/admin/stats?days=${rangeDays}`, { cache: 'no-store' }),
+        fetch('/api/admin/bug-reports', { cache: 'no-store' }).catch(() => null),
+      ]);
       if (res.status === 401) {
         setErrorState('unauthorized');
         setStats(null);
@@ -275,12 +282,50 @@ export function AdminDashboardClient() {
         setSetupRequired(false);
         setStats(json.data);
       }
+
+      if (bugsRes && bugsRes.ok) {
+        const bugsJson = (await bugsRes.json()) as {
+          reports?: BugReportRecord[];
+          openCount?: number;
+        };
+        if (Array.isArray(bugsJson.reports)) {
+          setBugReports(bugsJson.reports);
+          setOpenBugCount(bugsJson.openCount ?? 0);
+        }
+      }
     } catch {
       setErrorState('error');
     } finally {
       setFetching(false);
     }
   }, []);
+
+  const handleBugStatusChange = useCallback(
+    async (id: string, nextStatus: BugReportStatus) => {
+      setUpdatingBugId(id);
+      try {
+        const res = await fetch('/api/admin/bug-reports', {
+          method: 'PATCH',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ id, status: nextStatus }),
+        });
+        if (!res.ok) return;
+        setBugReports((prev) => {
+          const updated = prev.map((r) =>
+            r.id === id ? { ...r, status: nextStatus } : r
+          );
+          setOpenBugCount(
+            updated.filter((r) => r.status === 'open' || r.status === 'in_progress')
+              .length
+          );
+          return updated;
+        });
+      } finally {
+        setUpdatingBugId(null);
+      }
+    },
+    []
+  );
 
   useEffect(() => {
     if (authLoading) return;
@@ -399,6 +444,22 @@ export function AdminDashboardClient() {
                   </button>
                 ))}
               </div>
+            )}
+
+            {stats && openBugCount > 0 && (
+              <button
+                type="button"
+                onClick={() => {
+                  setActivityTab('bugs');
+                  document
+                    .getElementById('admin-activity-panel')
+                    ?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+                }}
+                className="inline-flex items-center gap-1.5 rounded-lg border border-destructive/40 bg-destructive/10 px-2.5 py-1.5 text-xs font-semibold text-destructive hover:bg-destructive/15 transition-colors"
+              >
+                <Bug className="w-3.5 h-3.5" />
+                <span>{tr(`${openBugCount} Bugs`, `미처리 버그 ${openBugCount}`)}</span>
+              </button>
             )}
 
             <Button
@@ -1124,8 +1185,11 @@ export function AdminDashboardClient() {
               </div>
             </section>
 
-            {/* Section 6: Recent Events & Exam Sessions Log Table */}
-            <section className="rounded-2xl border border-border bg-card overflow-hidden">
+            {/* Section 6: Recent Events, Exam Sessions & Bug Reports */}
+            <section
+              id="admin-activity-panel"
+              className="rounded-2xl border border-border bg-card overflow-hidden"
+            >
               <div className="border-b border-border/80 bg-secondary/40 px-4 py-3 flex flex-wrap items-center justify-between gap-3">
                 <div className="flex items-center gap-2">
                   <Clock className="w-4 h-4 text-primary" />
@@ -1152,6 +1216,22 @@ export function AdminDashboardClient() {
                     >
                       {tr(`Recent Exams (${stats.recentSessions.length})`, `최근 시험 기록 (${stats.recentSessions.length})`)}
                     </button>
+                    <button
+                      type="button"
+                      onClick={() => setActivityTab('bugs')}
+                      className={`inline-flex items-center gap-1.5 rounded-md px-2.5 py-1 font-semibold transition-colors ${
+                        activityTab === 'bugs'
+                          ? 'bg-foreground text-background'
+                          : 'text-muted-foreground hover:text-foreground'
+                      }`}
+                    >
+                      <span>{tr(`Bug Reports (${bugReports.length})`, `버그 리포트 (${bugReports.length})`)}</span>
+                      {openBugCount > 0 && (
+                        <span className="rounded-full bg-destructive text-destructive-foreground px-1.5 py-0.5 text-[10px] font-mono leading-none">
+                          {openBugCount}
+                        </span>
+                      )}
+                    </button>
                   </div>
                 </div>
 
@@ -1170,9 +1250,110 @@ export function AdminDashboardClient() {
                     ))}
                   </select>
                 )}
+
+                {activityTab === 'bugs' && (
+                  <select
+                    aria-label={tr('Filter bug status', '버그 상태 필터')}
+                    value={bugStatusFilter}
+                    onChange={(e) =>
+                      setBugStatusFilter(e.target.value as 'all' | BugReportStatus)
+                    }
+                    className="rounded-lg border border-border bg-background px-2.5 py-1.5 text-xs text-foreground"
+                  >
+                    <option value="all">{tr('All Statuses', '전체 상태')}</option>
+                    <option value="open">{tr('Open', '신규 접수')}</option>
+                    <option value="in_progress">{tr('In Progress', '확인 · 수정 중')}</option>
+                    <option value="resolved">{tr('Resolved', '해결 완료')}</option>
+                    <option value="dismissed">{tr('Dismissed', '보류 · 제외')}</option>
+                  </select>
+                )}
               </div>
 
-              {activityTab === 'events' ? (
+              {activityTab === 'bugs' ? (
+                <div className="divide-y divide-border/70 max-h-[520px] overflow-y-auto">
+                  {bugReports.filter(
+                    (b) => bugStatusFilter === 'all' || b.status === bugStatusFilter
+                  ).length === 0 ? (
+                    <div className="py-10 px-4 text-center text-xs text-muted-foreground">
+                      {tr('No bug reports matching the selected filter.', '해당 상태의 버그 리포트가 없습니다.')}
+                    </div>
+                  ) : (
+                    bugReports
+                      .filter(
+                        (b) => bugStatusFilter === 'all' || b.status === bugStatusFilter
+                      )
+                      .map((bug) => {
+                        const diagCount = Array.isArray(bug.diagnostics)
+                          ? bug.diagnostics.length
+                          : 0;
+                        return (
+                          <div key={bug.id} className="p-4 space-y-2.5 hover:bg-secondary/25 transition-colors">
+                            <div className="flex flex-wrap items-start justify-between gap-3">
+                              <div className="space-y-1 min-w-0">
+                                <div className="flex flex-wrap items-center gap-2">
+                                  <span className="rounded-md bg-accent-soft px-2 py-0.5 font-mono text-[10.5px] font-semibold text-primary">
+                                    {bug.category}
+                                  </span>
+                                  <span className="font-semibold text-sm text-foreground break-words">
+                                    {bug.title}
+                                  </span>
+                                </div>
+                                <div className="flex flex-wrap items-center gap-x-3 gap-y-1 font-mono text-[11px] text-muted-foreground">
+                                  <span>{formatKstDateTime(bug.created_at)}</span>
+                                  <span>
+                                    {bug.reporter_email ?? `anon:${bug.session_id.slice(0, 8)}`}
+                                  </span>
+                                  <span>{bug.page_path}</span>
+                                  {bug.lesson_id && <span>lesson:{bug.lesson_id}</span>}
+                                  <span>
+                                    {bug.device_type} · {bug.locale} · {bug.theme}
+                                    {bug.viewport ? ` · ${bug.viewport}` : ''}
+                                  </span>
+                                </div>
+                              </div>
+
+                              <select
+                                aria-label={tr('Update bug status', '버그 상태 변경')}
+                                disabled={updatingBugId === bug.id}
+                                value={bug.status}
+                                onChange={(e) =>
+                                  void handleBugStatusChange(
+                                    bug.id,
+                                    e.target.value as BugReportStatus
+                                  )
+                                }
+                                className="rounded-lg border border-border bg-background px-2.5 py-1 text-xs font-semibold text-foreground"
+                              >
+                                <option value="open">{tr('Open', '신규 접수')}</option>
+                                <option value="in_progress">{tr('In Progress', '수정 중')}</option>
+                                <option value="resolved">{tr('Resolved', '해결 완료')}</option>
+                                <option value="dismissed">{tr('Dismissed', '보류 · 제외')}</option>
+                              </select>
+                            </div>
+
+                            <p className="text-xs leading-relaxed text-foreground/90 whitespace-pre-wrap break-words rounded-lg bg-secondary/40 px-3 py-2.5 border border-border/60">
+                              {bug.description}
+                            </p>
+
+                            {diagCount > 0 && (
+                              <details className="text-[11px] text-muted-foreground">
+                                <summary className="cursor-pointer font-medium hover:text-foreground">
+                                  {tr(
+                                    `View ${diagCount} diagnostic log entries`,
+                                    `첨부된 진단 로그 ${diagCount}건 보기`
+                                  )}
+                                </summary>
+                                <pre className="mt-2 rounded-lg border border-border bg-background p-2.5 overflow-x-auto font-mono text-[10.5px] leading-relaxed">
+                                  {JSON.stringify(bug.diagnostics, null, 2)}
+                                </pre>
+                              </details>
+                            )}
+                          </div>
+                        );
+                      })
+                  )}
+                </div>
+              ) : activityTab === 'events' ? (
                 <div className="overflow-x-auto max-h-[380px]">
                   <table className="w-full text-xs">
                     <thead className="sticky top-0 bg-card border-b border-border text-[11px] text-muted-foreground">

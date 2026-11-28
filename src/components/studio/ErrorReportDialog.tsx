@@ -13,7 +13,7 @@ import { Badge } from '@/components/ui/badge';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { useLocale } from '@/lib/i18n';
 import type { SafeErrorLogEntry } from '@/lib/errorSanitizer';
-import { AlertCircle, Check, Copy, RotateCcw, ShieldCheck, SlidersHorizontal, Trash2 } from 'lucide-react';
+import { AlertCircle, Bug, Check, Copy, RotateCcw, ShieldCheck, SlidersHorizontal, Trash2 } from 'lucide-react';
 
 interface ErrorReportDialogProps {
   open: boolean;
@@ -22,6 +22,7 @@ interface ErrorReportDialogProps {
   onClearLogs: () => void;
   onRetryAudio?: () => void;
   onOpenAudioSetup?: () => void;
+  onOpenBugReport?: () => void;
 }
 
 export function ErrorReportDialog({
@@ -31,6 +32,7 @@ export function ErrorReportDialog({
   onClearLogs,
   onRetryAudio,
   onOpenAudioSetup,
+  onOpenBugReport,
 }: ErrorReportDialogProps) {
   const { tr } = useLocale();
   const [copied, setCopied] = useState(false);
@@ -155,6 +157,21 @@ export function ErrorReportDialog({
             </div>
 
             <div className="flex items-center gap-2">
+              {onOpenBugReport && (
+                <Button
+                  type="button"
+                  size="sm"
+                  variant="outline"
+                  onClick={() => {
+                    onOpenChange(false);
+                    onOpenBugReport();
+                  }}
+                  className="text-xs gap-1.5"
+                >
+                  <Bug className="w-3.5 h-3.5 text-primary" />
+                  <span>{tr('Report Bug', '버그 리포트 보내기')}</span>
+                </Button>
+              )}
               {latest?.category === 'audio' && onOpenAudioSetup && (
                 <Button
                   type="button"

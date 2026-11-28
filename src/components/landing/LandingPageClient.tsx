@@ -6,6 +6,7 @@ import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { AnimatePresence, motion } from 'framer-motion';
 import { BrandFretLogo } from '@/components/icons/GuitarSvgIcons';
+import { useBugReport } from '@/components/feedback/BugReportContext';
 import { LiveCoachingShowcase } from '@/components/landing/LiveCoachingShowcase';
 import { MagicMoveFretboardDemo } from '@/components/landing/MagicMoveFretboardDemo';
 import { WorkflowStageShowcase } from '@/components/landing/WorkflowStageShowcase';
@@ -25,6 +26,7 @@ import type { PhaseId } from '@/types/guitar';
 import {
   ArrowRight,
   BookmarkCheck,
+  Bug,
   CheckCircle2,
   Compass,
   Headphones,
@@ -160,6 +162,7 @@ export function LandingPageClient() {
     authError,
     signInWithGoogle,
   } = useAuth();
+  const { openBugReport } = useBugReport();
 
   const [selectedPhase, setSelectedPhase] = useState<PhaseId>('phase-1');
   const [phaseDir, setPhaseDir] = useState(1);
@@ -332,6 +335,19 @@ export function LandingPageClient() {
                   );
                 })}
               </div>
+
+              {/* Bug Report */}
+              <Button
+                type="button"
+                size="sm"
+                variant="outline"
+                onClick={() => openBugReport()}
+                className="rounded-lg gap-1.5 text-xs font-medium h-8 px-2.5"
+                title={tr('Report a Bug', '버그 제보')}
+              >
+                <Bug className="w-3.5 h-3.5 text-primary" />
+                <span className="hidden md:inline">{tr('Bug Report', '버그 제보')}</span>
+              </Button>
 
               {user ? (
                 <div className="flex items-center gap-1.5">
@@ -1125,6 +1141,14 @@ export function LandingPageClient() {
                     className="hover:text-foreground transition-colors"
                   >
                     {tr('Curriculum', '커리큘럼')}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => openBugReport()}
+                    className="inline-flex items-center gap-1 hover:text-foreground transition-colors"
+                  >
+                    <Bug className="w-3 h-3 text-primary" />
+                    <span>{tr('Bug Report', '버그 제보')}</span>
                   </button>
                   <a
                     href="https://github.com/srain0626/fretmaster-studio"

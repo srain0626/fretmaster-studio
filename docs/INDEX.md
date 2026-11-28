@@ -52,6 +52,7 @@ GuitarTeacher/
     │   ├── siteConfig.ts             # Canonical SITE_URL (fretmasterstudio.seltum.xyz) & env resolver
     │   ├── auth.tsx                  # AuthProvider, Google OAuth sign-in (`?next=`), admin check
     │   ├── adminAuth.ts              # Server-side admin RBAC verification helpers
+    │   ├── bugReport.ts              # Bug report validation, sanitization & status types
     │   ├── analytics.ts              # Privacy-safe GTM `dataLayer` + `/api/telemetry` emitter
     │   ├── progressSync.ts           # Conflict-free local+cloud merge & PostgreSQL sync
     │   ├── theme.ts                  # Shared Light/Dark/System theme hook
@@ -77,7 +78,7 @@ GuitarTeacher/
     │   ├── page.tsx                  # Public learner-focused Landing Page (`/`)
     │   ├── studio/page.tsx           # Protected interactive Studio workspace (`/studio`, `?lesson=`)
     │   ├── admin/page.tsx            # Admin-only funnel & table analytics console (`/admin`)
-    │   ├── api/                      # `/api/telemetry`, `/api/admin/me`, `/api/admin/stats`
+    │   ├── api/                      # `/api/telemetry`, `/api/bug-reports`, `/api/admin/*`
     │   ├── auth/callback/route.ts    # PKCE OAuth callback handler (`/auth/callback`)
     │   ├── robots.ts                 # Static robots.txt route
     │   ├── sitemap.ts                # Static sitemap.xml route
@@ -86,6 +87,7 @@ GuitarTeacher/
         ├── landing/                  # `LandingPageClient`, `MagicMoveFretboardDemo`, `LiveCoachingShowcase`, `WorkflowStageShowcase`
         ├── admin/                    # `AdminDashboardClient.tsx`
         ├── analytics/                # `PageViewTracker.tsx`
+        ├── feedback/                 # `BugReportContext`, `BugReportDialog`, `BugReportAnnouncement`
         ├── auth/                     # `AuthGateCard.tsx`
         ├── studio/                   # `FretMasterStudioClient`, `StudioOnboardingDialog`, `ErrorReportDialog`
         ├── ui/                       # 15 shadcn/base-ui primitives

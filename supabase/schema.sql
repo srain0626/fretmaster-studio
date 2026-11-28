@@ -659,3 +659,80 @@ $$;
 
 grant execute on function public.is_admin_user() to anon, authenticated;
 grant execute on function public.get_admin_dashboard_stats(integer) to authenticated;
+
+-- ---------------------------------------------------------------------------
+-- In-App Bug Reports (`public.bug_reports`)
+-- ---------------------------------------------------------------------------
+
+create table if not exists public.bug_reports (
+  id uuid primary key default gen_random_uuid(),
+  user_id uuid references auth.users(id) on delete set null,
+  reporter_email text,
+  session_id text not null default 'anonymous',
+  category text not null check (category in ('audio_pitch', 'lesson_content', 'ui_layout', 'auth_sync', 'other')),
+  title text not null check (char_length(title) between 2 and 140),
+  description text not null check (char_length(description) between 5 and 3000),
+  page_path text not null default '/',
+  lesson_id text,
+  locale text not null default 'unknown',
+  theme text not null default 'unknown',
+  device_type text not null default 'unknown',
+  viewport text,
+  user_agent text,
+  diagnostics jsonb not null default '[]'::jsonb,
+  status text not null default 'open' check (status in ('open', 'in_progress', 'resolved', 'dismissed')),
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now()
+);
+
+create index if not exists idx_bug_reports_created_at
+  on public.bug_reports (created_at desc);
+
+create index if not exists idx_bug_reports_status_created
+  on public.bug_reports (status, created_at desc);
+
+create index if not exists idx_bug_reports_user_id
+  on public.bug_reports (user_id);
+
+create or replace function public.set_bug_reports_updated_at()
+returns trigger
+language plpgsql
+set search_path = ''
+as $$
+begin
+  new.updated_at = now();
+  return new;
+end;
+$$;
+
+drop trigger if exists trg_bug_reports_updated_at on public.bug_reports;
+create trigger trg_bug_reports_updated_at
+  before update on public.bug_reports
+  for each row execute function public.set_bug_reports_updated_at();
+
+alter table public.bug_reports enable row level security;
+
+drop policy if exists "bug_reports_insert_any" on public.bug_reports;
+create policy "bug_reports_insert_any"
+  on public.bug_reports
+  for insert
+  to anon, authenticated
+  with check (user_id is null or (select auth.uid()) = user_id);
+
+drop policy if exists "bug_reports_select_admin" on public.bug_reports;
+create policy "bug_reports_select_admin"
+  on public.bug_reports
+  for select
+  to authenticated
+  using ((select public.is_admin_user()));
+
+drop policy if exists "bug_reports_update_admin" on public.bug_reports;
+create policy "bug_reports_update_admin"
+  on public.bug_reports
+  for update
+  to authenticated
+  using ((select public.is_admin_user()))
+  with check ((select public.is_admin_user()));
+
+grant insert on public.bug_reports to anon, authenticated;
+grant select, update on public.bug_reports to authenticated;

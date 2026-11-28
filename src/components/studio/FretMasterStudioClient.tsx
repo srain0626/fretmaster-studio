@@ -29,6 +29,7 @@ import { ChromaticTunerDialog } from '@/components/audio/ChromaticTunerDialog';
 import { AudioInterfaceModal } from '@/components/audio/AudioInterfaceModal';
 import type { User } from '@supabase/supabase-js';
 import { AuthGateCard } from '@/components/auth/AuthGateCard';
+import { useBugReport } from '@/components/feedback/BugReportContext';
 import { ErrorReportDialog } from '@/components/studio/ErrorReportDialog';
 import { StudioOnboardingDialog } from '@/components/studio/StudioOnboardingDialog';
 import { CurriculumSidebar } from '@/components/curriculum/CurriculumSidebar';
@@ -235,6 +236,7 @@ function AuthenticatedStudioWorkspace({
   onSignOut: () => Promise<void>;
   onGuestSignIn: (lessonId?: string) => void;
 }) {
+  const { openBugReport } = useBugReport();
   const [selectedLessonId, setSelectedLessonId] = useState<string>(ALL_LESSONS[0].id);
   const [practiceMode, setPracticeMode] = useState<PracticeMode>('guide');
   const [judgmentTier, setJudgmentTier] = useState<JudgmentTier>('relaxed');
@@ -2407,6 +2409,9 @@ function AuthenticatedStudioWorkspace({
           onSignOut={() => (isGuestMode ? onGuestSignIn(lesson.id) : void onSignOut())}
           errorLogCount={errorLogs.length}
           onOpenErrorModal={() => setErrorModalOpen(true)}
+          onOpenBugReport={() =>
+            openBugReport({ lessonId: lesson.id, diagnostics: errorLogs })
+          }
           isAdmin={isAdmin}
         />
 
@@ -3169,6 +3174,13 @@ function AuthenticatedStudioWorkspace({
         }}
         onRetryAudio={() => void handleToggleAudio()}
         onOpenAudioSetup={() => setAudioSetupOpen(true)}
+        onOpenBugReport={() =>
+          openBugReport({
+            lessonId: lesson.id,
+            category: errorLogs[0]?.category === 'sync' || errorLogs[0]?.category === 'auth' ? 'auth_sync' : 'audio_pitch',
+            diagnostics: errorLogs,
+          })
+        }
       />
     </StudioMotionProvider>
   );

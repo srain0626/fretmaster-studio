@@ -16,6 +16,7 @@ import {
   ArrowLeft,
   ArrowRight,
   BookOpen,
+  Bug,
   Check,
   Cloud,
   Compass,
@@ -195,13 +196,23 @@ export function StudioOnboardingDialog({
                   <div className="text-xs font-semibold text-foreground">
                     {tr('Tasks & Motion Guide', '단계 체크 & 모션 가이드')}
                   </div>
-                  <p className="text-[11px] text-muted-foreground leading-relaxed">
+                    <p className="text-[11px] text-muted-foreground leading-relaxed">
                     {tr(
                       'See single-line fingering tips and open Harmony / Posture animations anytime.',
                       '지금 짚을 손가락 안내와 화성·자세 애니메이션 모달을 언제든 열 수 있습니다.'
                     )}
                   </p>
                 </div>
+              </div>
+
+              <div className="rounded-xl border border-primary/30 bg-accent-soft/50 px-3.5 py-2.5 flex items-center gap-2.5 text-[11.5px] text-foreground">
+                <Bug className="w-4 h-4 text-primary shrink-0" />
+                <span>
+                  {tr(
+                    'Notice an issue while practicing? Use the new Report a Bug button in the left sidebar anytime.',
+                    '연습 중 오작동이나 불편을 느끼시면 왼쪽 사이드바의 버그 제보 버튼으로 바로 알려주세요.'
+                  )}
+                </span>
               </div>
             </div>
           )}

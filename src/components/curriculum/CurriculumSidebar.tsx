@@ -28,6 +28,7 @@ import {
   AlertCircle,
   BarChart3,
   BookOpen,
+  Bug,
   CheckCircle2,
   ChevronRight,
   Cloud,
@@ -71,6 +72,7 @@ interface CurriculumSidebarProps {
   onSignOut?: () => void;
   errorLogCount?: number;
   onOpenErrorModal?: () => void;
+  onOpenBugReport?: () => void;
   isAdmin?: boolean;
 }
 
@@ -96,6 +98,7 @@ export function CurriculumSidebar({
   onSignOut,
   errorLogCount = 0,
   onOpenErrorModal,
+  onOpenBugReport,
   isAdmin = false,
 }: CurriculumSidebarProps) {
   const { locale, preference: localePref, setPreference: setLocalePref, tr } = useLocale();
@@ -258,6 +261,22 @@ export function CurriculumSidebar({
             >
               <HelpCircle className="w-4 h-4" />
               <span>{tr('Quick Tour', '튜토리얼 다시 보기')}</span>
+            </button>
+          )}
+
+          {onOpenBugReport && (
+            <button
+              type="button"
+              onClick={onOpenBugReport}
+              className="w-full flex items-center justify-between gap-2 rounded-lg px-2.5 py-2 text-[13px] font-medium text-muted-foreground hover:text-foreground hover:bg-card/60 transition-colors"
+            >
+              <span className="inline-flex items-center gap-2.5">
+                <Bug className="w-4 h-4 text-primary" />
+                <span>{tr('Report a Bug', '버그 제보')}</span>
+              </span>
+              <span className="rounded bg-accent-soft px-1.5 py-0.5 text-[9.5px] font-bold tracking-wider text-primary uppercase">
+                NEW
+              </span>
             </button>
           )}
         </div>
@@ -686,6 +705,27 @@ export function CurriculumSidebar({
                       {errorLogCount}
                     </span>
                   )}
+                </Button>
+              </div>
+            )}
+
+            {onOpenBugReport && (
+              <div className="pt-3 border-t border-border flex items-center justify-between gap-3">
+                <div className="flex items-center gap-2 text-xs font-medium text-foreground">
+                  <Bug className="w-3.5 h-3.5 text-primary" />
+                  <span>{tr('Report a Bug', '버그 제보')}</span>
+                </div>
+                <Button
+                  type="button"
+                  size="sm"
+                  variant="outline"
+                  onClick={() => {
+                    setSettingsOpen(false);
+                    onOpenBugReport();
+                  }}
+                  className="text-xs gap-1.5"
+                >
+                  <span>{tr('Open Form', '제보 작성')}</span>
                 </Button>
               </div>
             )}

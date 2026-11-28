@@ -4,6 +4,7 @@ import { GoogleAnalytics } from "@next/third-parties/google";
 import "pretendard/dist/web/variable/pretendardvariable-dynamic-subset.css";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { PageViewTracker } from "@/components/analytics/PageViewTracker";
+import { BugReportProvider } from "@/components/feedback/BugReportContext";
 import { AuthProvider } from "@/lib/auth";
 import { LocaleProvider } from "@/lib/i18n";
 import { SITE_URL } from "@/lib/siteConfig";
@@ -202,8 +203,10 @@ export default function RootLayout({
         )}
         <LocaleProvider>
           <AuthProvider>
-            <PageViewTracker />
-            <TooltipProvider delay={200}>{children}</TooltipProvider>
+            <BugReportProvider>
+              <PageViewTracker />
+              <TooltipProvider delay={200}>{children}</TooltipProvider>
+            </BugReportProvider>
           </AuthProvider>
         </LocaleProvider>
       </body>
