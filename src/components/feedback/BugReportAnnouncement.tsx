@@ -64,10 +64,12 @@ export function BugReportAnnouncement({
     onOpenBugReport();
   };
 
+  const isStudio = pathname.startsWith('/studio');
+
   return (
     <aside
       aria-label={tr('New Bug Report Feature Notice', '새 버그 리포트 기능 안내')}
-      className="fixed bottom-4 right-4 z-40 w-[calc(100vw-2rem)] max-w-sm rounded-2xl border border-primary/35 bg-card p-4 shadow-lg"
+      className={`fixed ${isStudio ? 'bottom-20' : 'bottom-4'} right-4 z-40 w-[calc(100vw-2rem)] max-w-sm rounded-[16px] border border-primary/35 bg-card p-4 shadow-[0_18px_44px_rgba(11,14,16,0.18)]`}
     >
       <div className="flex items-start justify-between gap-3">
         <div className="flex items-center gap-2">
@@ -92,8 +94,8 @@ export function BugReportAnnouncement({
 
       <p className="mt-2 text-xs leading-relaxed text-muted-foreground">
         {tr(
-          'Spotted pitch judgment issues, audio lag, or layout bugs? You can now report them in one click from the menu or studio sidebar anytime.',
-          '음정 인식 오류, 오디오 문제, 화면 버그를 발견하셨나요? 상단 메뉴나 스튜디오 사이드바에서 언제든 바로 제보해 주세요.'
+          'Spotted pitch judgment issues, audio lag, or layout bugs? You can now report them in one click from the bottom Menu anytime.',
+          '음정 인식 오류, 오디오 문제, 화면 버그를 발견하셨나요? 하단 메뉴나 상단 바에서 언제든 바로 제보해 주세요.'
         )}
       </p>
 

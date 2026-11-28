@@ -12,6 +12,7 @@ import { MagicMoveFretboardDemo } from '@/components/landing/MagicMoveFretboardD
 import { WorkflowStageShowcase } from '@/components/landing/WorkflowStageShowcase';
 import { SILK_EASE, STUDIO_SPRING, StudioMotionProvider } from '@/components/motion/StudioMotion';
 import { Button } from '@/components/ui/button';
+import { Hint } from '@/components/ui/tooltip';
 import {
   ALL_LESSONS,
   MODULES,
@@ -233,13 +234,14 @@ export function LandingPageClient() {
 
   return (
     <StudioMotionProvider>
-      <div className="min-h-screen flex flex-col bg-background text-foreground overflow-x-clip">
+      <div className="relative min-h-screen flex flex-col bg-background text-foreground overflow-x-clip">
+        <div className="nr-ambient-aura" aria-hidden="true" />
         {/* Sticky Product Navigation */}
-        <header className="sticky top-0 z-40 border-b border-border/80 bg-background/90 backdrop-blur-md">
+        <header className="sticky top-0 z-40 border-b border-border/80 bg-background/80 backdrop-blur-md">
           <div className="mx-auto max-w-6xl px-4 sm:px-6 h-16 flex items-center justify-between gap-3">
             <Link href="/" className="inline-flex items-center gap-2 shrink-0">
               <BrandFretLogo size={24} />
-              <span className="text-sm sm:text-base font-bold tracking-tight text-foreground">
+              <span className="font-display text-base sm:text-lg font-normal tracking-[-0.02em] text-foreground">
                 FretMaster<span className="hidden sm:inline"> Studio</span>
               </span>
             </Link>
@@ -318,54 +320,57 @@ export function LandingPageClient() {
                 ).map((opt) => {
                   const Icon = opt.icon;
                   return (
-                    <button
-                      key={opt.id}
-                      type="button"
-                      onClick={() => setThemePreference(opt.id)}
-                      className={`inline-flex items-center gap-1 rounded-md px-2 py-1 text-[11px] font-medium transition-colors ${
-                        themePreference === opt.id
-                          ? 'bg-secondary text-foreground'
-                          : 'text-muted-foreground hover:text-foreground'
-                      }`}
-                      title={opt.label}
-                      aria-label={opt.label}
-                    >
-                      <Icon className="w-3 h-3" />
-                    </button>
+                    <Hint key={opt.id} content={opt.label} side="bottom">
+                      <button
+                        type="button"
+                        onClick={() => setThemePreference(opt.id)}
+                        className={`inline-flex items-center gap-1 rounded-[6px] px-2 py-1 text-[11px] font-medium transition-colors ${
+                          themePreference === opt.id
+                            ? 'bg-secondary text-foreground'
+                            : 'text-muted-foreground hover:text-foreground'
+                        }`}
+                        aria-label={opt.label}
+                      >
+                        <Icon className="w-3 h-3" />
+                      </button>
+                    </Hint>
                   );
                 })}
               </div>
 
               {/* Bug Report */}
-              <Button
-                type="button"
-                size="sm"
-                variant="outline"
-                onClick={() => openBugReport()}
-                className="rounded-lg gap-1.5 text-xs font-medium h-8 px-2.5"
-                title={tr('Report a Bug', '버그 제보')}
-              >
-                <Bug className="w-3.5 h-3.5 text-primary" />
-                <span className="hidden md:inline">{tr('Bug Report', '버그 제보')}</span>
-              </Button>
+              <Hint content={tr('Report a Bug', '버그 제보')} side="bottom">
+                <Button
+                  type="button"
+                  size="sm"
+                  variant="outline"
+                  onClick={() => openBugReport()}
+                  className="rounded-[2px] gap-1.5 text-xs font-medium h-8 px-2.5"
+                >
+                  <Bug className="w-3.5 h-3.5 text-primary" />
+                  <span className="hidden md:inline">{tr('Bug Report', '버그 제보')}</span>
+                </Button>
+              </Hint>
 
               {user ? (
                 <div className="flex items-center gap-1.5">
                   {isAdmin && (
-                    <Link
-                      href="/admin"
-                      className="inline-flex items-center gap-1 rounded-lg border border-border bg-card px-2.5 py-2 text-xs font-semibold text-foreground hover:bg-secondary/70 transition-colors"
-                      title={tr('Admin Analytics', '어드민 통계')}
-                    >
-                      <ShieldCheck className="w-3.5 h-3.5 text-primary" />
-                      <span className="hidden sm:inline">Admin</span>
-                    </Link>
+                    <Hint content={tr('Admin Analytics', '어드민 통계')} side="bottom">
+                      <Link
+                        href="/admin"
+                        className="inline-flex items-center gap-1 rounded-[2px] border border-border bg-card px-2.5 py-2 text-xs font-semibold text-foreground hover:bg-secondary/70 transition-colors"
+                      >
+                        <ShieldCheck className="w-3.5 h-3.5 text-primary" />
+                        <span className="hidden sm:inline">Admin</span>
+                      </Link>
+                    </Hint>
                   )}
                   <Button
                     type="button"
                     size="sm"
+                    variant="signal"
                     onClick={() => startStudioFlow('header')}
-                    className="rounded-lg gap-1.5 text-xs font-semibold"
+                    className="rounded-[2px] gap-1.5 text-xs font-semibold"
                   >
                     <span>{tr('Continue Lesson', '이어서 연습하기')}</span>
                     <ArrowRight className="w-3.5 h-3.5" />
@@ -375,9 +380,10 @@ export function LandingPageClient() {
                 <Button
                   type="button"
                   size="sm"
+                  variant="signal"
                   disabled={authLoading || signingIn}
                   onClick={() => startStudioFlow('header')}
-                  className="rounded-lg gap-2 text-xs font-semibold"
+                  className="rounded-[2px] gap-2 text-xs font-semibold"
                 >
                   <GoogleGIcon />
                   <span className="hidden sm:inline">
@@ -390,7 +396,7 @@ export function LandingPageClient() {
           </div>
         </header>
 
-        <main className="flex-1">
+        <main className="relative z-10 flex-1">
           {/* SECTION 1: HERO — VALUE ESSENCE & IMMEDIATE START */}
           <section className="relative border-b border-border/80 landing-slide-grid py-14 sm:py-20 lg:py-24">
             <div className="mx-auto max-w-6xl px-4 sm:px-6 space-y-12">
@@ -400,10 +406,10 @@ export function LandingPageClient() {
                     initial={{ opacity: 0, y: 8 }}
                     animate={{ opacity: 1, y: 0 }}
                     transition={{ duration: 0.35, ease: SILK_EASE }}
-                    className="inline-flex items-center gap-2 rounded-full border border-border bg-card px-3.5 py-1 text-xs font-semibold text-foreground/90"
+                    className="inline-flex items-center gap-2 rounded-full border border-border bg-card px-3.5 py-1 text-xs font-medium text-foreground/90"
                   >
                     <span className="h-2 w-2 rounded-full bg-primary" />
-                    <span>
+                    <span className="font-mono text-[11px] tracking-tight">
                       {tr(
                         'Interactive Electric Guitar Lessons · Free All 39 Stages',
                         '혼자서도 막히지 않는 일렉기타 레슨 스튜디오 · 39강 전 과정 무료'
@@ -411,7 +417,7 @@ export function LandingPageClient() {
                     </span>
                   </motion.div>
 
-                  <h1 className="text-3xl sm:text-5xl font-bold tracking-tight text-foreground leading-[1.15] space-y-1">
+                  <h1 className="font-display text-3xl sm:text-5xl font-light tracking-[-0.025em] text-foreground leading-[1.12] space-y-1">
                     <motion.span
                       className="block"
                       initial={{ opacity: 0, y: 14 }}
@@ -474,9 +480,10 @@ export function LandingPageClient() {
                       <Button
                         type="button"
                         size="lg"
+                        variant="signal"
                         disabled={authLoading || signingIn}
                         onClick={() => startStudioFlow('hero_primary', user ? undefined : 'm1-1')}
-                        className="h-12 rounded-xl px-6 gap-2.5 text-sm font-semibold shadow-xs"
+                        className="nr-solid-btn h-12 px-6 gap-2.5 text-sm font-semibold"
                       >
                         {!user && <GoogleGIcon />}
                         <span>
@@ -499,7 +506,7 @@ export function LandingPageClient() {
                               lesson_id: 'm1-1',
                             })
                           }
-                          className="inline-flex items-center justify-center gap-2 h-12 rounded-xl border border-border bg-card px-5 text-sm font-semibold text-foreground hover:bg-secondary/70 transition-colors"
+                          className="nr-ghost-btn inline-flex items-center justify-center gap-2 h-12 px-5 text-sm font-semibold transition-colors"
                         >
                           <span>{tr('Try Lesson 1-1 Without Sign-In', '로그인 없이 1-1 바로 체험')}</span>
                         </Link>
@@ -531,14 +538,14 @@ export function LandingPageClient() {
                   </motion.div>
                 </div>
 
-                {/* Right: Studio Preview Stage */}
+                {/* Right: Studio Preview Stage (Recessed OLED Showcase) */}
                 <motion.div
                   initial={{ opacity: 0, y: 16 }}
                   animate={{ opacity: 1, y: 0 }}
                   transition={{ duration: 0.55, delay: 0.14, ease: SILK_EASE }}
-                  className="rounded-2xl border border-border bg-card p-3 shadow-sm space-y-3"
+                  className="nr-obsidian-stage rounded-[20px] border border-oled-border p-3 text-oled-foreground space-y-3"
                 >
-                  <div className="rounded-xl overflow-hidden border border-border/70 bg-background">
+                  <div className="rounded-[12px] overflow-hidden border border-oled-border bg-oled">
                     <Image
                       src={previewSrc}
                       alt={tr(
@@ -569,12 +576,12 @@ export function LandingPageClient() {
                     ].map((item) => (
                       <div
                         key={item.title}
-                        className="rounded-xl border border-border/70 bg-background/80 px-2.5 py-2 text-center"
+                        className="rounded-[10px] border border-oled-border bg-oled-elevated px-2.5 py-2 text-center"
                       >
-                        <div className="text-[11px] font-bold text-foreground truncate">
+                        <div className="text-[11px] font-semibold text-oled-foreground truncate">
                           {item.title}
                         </div>
-                        <div className="text-[10px] text-muted-foreground truncate">{item.sub}</div>
+                        <div className="text-[10px] text-oled-muted truncate">{item.sub}</div>
                       </div>
                     ))}
                   </div>
@@ -1067,7 +1074,7 @@ export function LandingPageClient() {
                 </div>
 
                 <div className="max-w-2xl mx-auto space-y-3">
-                  <h2 className="text-3xl sm:text-5xl font-bold tracking-tight text-foreground leading-[1.15]">
+                  <h2 className="font-display text-3xl sm:text-5xl font-light tracking-[-0.025em] text-foreground leading-[1.15]">
                     {tr(
                       'Pick up your guitar and ring your first lesson today.',
                       '지금 기타를 꺼내 들고, 오늘 첫 레슨을 울려보세요.'
@@ -1085,9 +1092,10 @@ export function LandingPageClient() {
                   <Button
                     type="button"
                     size="lg"
+                    variant="signal"
                     disabled={authLoading || signingIn}
                     onClick={() => startStudioFlow('closing_primary', user ? undefined : 'm1-1')}
-                    className="h-12 rounded-xl px-7 gap-2.5 text-sm font-semibold shadow-xs"
+                    className="nr-solid-btn h-12 px-7 gap-2.5 text-sm font-semibold"
                   >
                     {!user && <GoogleGIcon />}
                     <span>

@@ -4,6 +4,7 @@ import React, { useMemo, useState, useSyncExternalStore } from 'react';
 import Link from 'next/link';
 import { BrandFretLogo } from '@/components/icons/GuitarSvgIcons';
 import { Button } from '@/components/ui/button';
+import { Hint } from '@/components/ui/tooltip';
 import { getLessonById, localizeLesson } from '@/data/curriculumData';
 import { useAuth } from '@/lib/auth';
 import { sanitizeLogLine } from '@/lib/errorSanitizer';
@@ -102,8 +103,9 @@ export function AuthGateCard({
       : null;
 
   return (
-    <div className="min-h-screen bg-background text-foreground flex flex-col">
-      <header className="w-full border-b border-border/80 bg-card/60 backdrop-blur-sm">
+    <div className="relative min-h-screen bg-background text-foreground flex flex-col overflow-x-clip">
+      <div className="nr-ambient-aura" aria-hidden="true" />
+      <header className="relative z-10 w-full border-b border-border/80 bg-background/75 backdrop-blur-md">
         <div className="mx-auto max-w-5xl px-4 sm:px-6 h-14 flex items-center justify-between gap-3">
           <Link
             href="/"
@@ -147,20 +149,20 @@ export function AuthGateCard({
               ).map((opt) => {
                 const Icon = opt.icon;
                 return (
-                  <button
-                    key={opt.id}
-                    type="button"
-                    onClick={() => setThemePreference(opt.id)}
-                    className={`inline-flex items-center gap-1 rounded-md px-2 py-0.5 text-[11px] font-medium transition-colors ${
-                      themePreference === opt.id
-                        ? 'bg-secondary text-foreground'
-                        : 'text-muted-foreground hover:text-foreground'
-                    }`}
-                    title={opt.label}
-                  >
-                    <Icon className="w-3 h-3" />
-                    <span>{opt.label}</span>
-                  </button>
+                  <Hint key={opt.id} content={opt.label} side="bottom">
+                    <button
+                      type="button"
+                      onClick={() => setThemePreference(opt.id)}
+                      className={`inline-flex items-center gap-1 rounded-[6px] px-2 py-0.5 text-[11px] font-medium transition-colors ${
+                        themePreference === opt.id
+                          ? 'bg-secondary text-foreground'
+                          : 'text-muted-foreground hover:text-foreground'
+                      }`}
+                    >
+                      <Icon className="w-3 h-3" />
+                      <span>{opt.label}</span>
+                    </button>
+                  </Hint>
                 );
               })}
             </div>
@@ -168,17 +170,17 @@ export function AuthGateCard({
         </div>
       </header>
 
-      <main className="flex-1 flex items-center justify-center px-4 py-12">
-        <div className="w-full max-w-md rounded-2xl border border-border bg-card p-6 sm:p-8 shadow-sm space-y-6">
+      <main className="relative z-10 flex-1 flex items-center justify-center px-4 py-12">
+        <div className="w-full max-w-md rounded-[18px] border border-border bg-card p-6 sm:p-8 shadow-[0_20px_48px_rgba(11,14,16,0.10)] dark:shadow-none space-y-6">
           <div className="flex flex-col items-center space-y-3 text-center">
-            <div className="inline-flex items-center justify-center w-12 h-12 rounded-2xl border border-border bg-background">
+            <div className="inline-flex items-center justify-center w-12 h-12 rounded-[14px] border border-border bg-background">
               <BrandFretLogo size={28} />
             </div>
             <div className="inline-flex items-center gap-1.5 rounded-full border border-border bg-background px-3 py-1 text-[11px] font-medium text-muted-foreground">
               <Lock className="w-3 h-3 text-primary" />
               <span>{tr('Member Studio Access', '회원 전용 스튜디오')}</span>
             </div>
-            <h1 className="text-xl sm:text-2xl font-bold tracking-tight text-foreground">
+            <h1 className="font-display text-2xl sm:text-[26px] font-light tracking-[-0.025em] text-foreground">
               {tr('Start Your Guitar Studio', '기타 레슨 스튜디오 시작하기')}
             </h1>
             <p className="text-xs sm:text-sm text-muted-foreground leading-relaxed">
@@ -214,9 +216,10 @@ export function AuthGateCard({
             <Button
               type="button"
               size="lg"
+              variant="signal"
               disabled={!isConfigured || submitting}
               onClick={handleGoogleLogin}
-              className="w-full h-11 rounded-xl gap-2.5 font-semibold"
+              className="w-full h-11 rounded-[10px] gap-2.5 font-semibold"
             >
               <GoogleLogoSvg />
               <span>

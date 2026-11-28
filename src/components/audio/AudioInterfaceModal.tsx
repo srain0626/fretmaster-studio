@@ -4,11 +4,13 @@ import React, { useCallback, useEffect, useRef, useState } from 'react';
 import {
   Dialog,
   DialogContent,
+  DialogDescription,
   DialogHeader,
   DialogTitle,
 } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
+import { Hint } from '@/components/ui/tooltip';
 import { Slider } from '@/components/ui/slider';
 import { Switch } from '@/components/ui/switch';
 import {
@@ -496,9 +498,15 @@ export function AudioInterfaceModal({
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="sm:max-w-xl max-h-[90vh] overflow-y-auto">
         <DialogHeader>
-          <DialogTitle className="text-base font-semibold">
+          <DialogTitle className="text-base">
             {tr('Audio & ASIO Input Setup', '오디오 & ASIO 입력 설정')}
           </DialogTitle>
+          <DialogDescription className="sr-only">
+            {tr(
+              'Configure audio device, channel routing, noise gate, and latency calibration.',
+              '오디오 입력 장치, 채널 라우팅, 노이즈 게이트 및 레이턴시 보정을 설정합니다.'
+            )}
+          </DialogDescription>
         </DialogHeader>
 
         <div className="space-y-4">
@@ -708,7 +716,7 @@ export function AudioInterfaceModal({
               <div
                 className="absolute top-0 bottom-0 w-px border-l border-dashed border-foreground/45 pointer-events-none"
                 style={{ left: `${gateTickPct}%` }}
-                title={`${tr('Noise Gate', '노이즈 게이트')}: ${config.noiseGateDb} dB`}
+                aria-label={`${tr('Noise Gate', '노이즈 게이트')}: ${config.noiseGateDb} dB`}
               />
               {/* Peak Hold Indicator */}
               {peakHoldDb > -60 && (
@@ -740,22 +748,23 @@ export function AudioInterfaceModal({
                     {currentPeakDb <= -90 ? '--' : `${currentPeakDb.toFixed(1)}`} dB
                   </strong>
                 </span>
-                <button
-                  type="button"
-                  onClick={() => {
-                    setPeakHoldDb(-100);
-                    setClipCount(0);
-                    setClipHoldActive(false);
-                    peakHoldAtRef.current = 0;
-                  }}
-                  className="hover:underline text-left"
-                  title={tr('Click to reset Peak Hold', '클릭하여 피크 홀드 초기화')}
-                >
-                  Hold:{' '}
-                  <strong className={peakHoldDb >= -1 ? 'text-destructive' : 'text-foreground'}>
-                    {peakHoldDb <= -90 ? '--' : `${peakHoldDb.toFixed(1)}`} dB
-                  </strong>
-                </button>
+                <Hint content={tr('Click to reset Peak Hold', '클릭하여 피크 홀드 초기화')} side="top">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setPeakHoldDb(-100);
+                      setClipCount(0);
+                      setClipHoldActive(false);
+                      peakHoldAtRef.current = 0;
+                    }}
+                    className="hover:underline text-left"
+                  >
+                    Hold:{' '}
+                    <strong className={peakHoldDb >= -1 ? 'text-destructive' : 'text-foreground'}>
+                      {peakHoldDb <= -90 ? '--' : `${peakHoldDb.toFixed(1)}`} dB
+                    </strong>
+                  </button>
+                </Hint>
                 <span>
                   RMS:{' '}
                   <strong className="text-foreground">
@@ -1088,7 +1097,6 @@ export function AudioInterfaceModal({
                         key={`tap-tick-${s.beatIdx}`}
                         className="absolute bottom-1 h-2 w-0.5 -translate-x-1/2 rounded-full bg-primary/80"
                         style={{ left: `${tickPct}%` }}
-                        title={`${s.errorMs} ms`}
                       />
                     );
                   })}
@@ -1121,7 +1129,6 @@ export function AudioInterfaceModal({
                   <div
                     className="absolute top-0 bottom-0 w-px bg-muted-foreground/50"
                     style={{ left: '33.3%' }}
-                    title="0 ms"
                   />
                   {tapSamples.map((s) => {
                     const dotPct = Math.max(
@@ -1133,7 +1140,6 @@ export function AudioInterfaceModal({
                         key={`done-dot-${s.beatIdx}`}
                         className="absolute top-1/2 -translate-x-1/2 -translate-y-1/2 h-2 w-2 rounded-full bg-muted-foreground/65"
                         style={{ left: `${dotPct}%` }}
-                        title={`${s.errorMs} ms`}
                       />
                     );
                   })}
@@ -1142,7 +1148,6 @@ export function AudioInterfaceModal({
                     style={{
                       left: `${Math.max(2, Math.min(98, ((calResult.offsetMs + 100) / 300) * 100))}%`,
                     }}
-                    title={`${calResult.offsetMs} ms`}
                   />
                 </div>
                 <div className="flex flex-wrap items-center justify-between gap-2 text-[11px] font-mono tabular-nums">

@@ -4,6 +4,7 @@ import React, { useEffect, useMemo, useState } from 'react';
 import {
   Dialog,
   DialogContent,
+  DialogDescription,
   DialogFooter,
   DialogHeader,
   DialogTitle,
@@ -64,10 +65,16 @@ export function LessonGuideDialog({
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="sm:max-w-2xl max-h-[88vh] flex flex-col p-0 gap-0 overflow-hidden">
         <DialogHeader className="px-6 pt-5 pb-4 border-b border-border">
-          <DialogTitle className="pr-8 text-base font-bold leading-snug">
+          <DialogTitle className="pr-8 text-lg leading-snug">
             <span className="font-mono text-sm text-primary mr-2">{lesson.code}</span>
             {lesson.title}
           </DialogTitle>
+          <DialogDescription className="sr-only">
+            {tr(
+              'Watch Harmony Point and Posture & Fix visual motion guides for this lesson.',
+              '이 레슨의 화성 포인트 및 자세 · 교정 모션 가이드를 확인합니다.'
+            )}
+          </DialogDescription>
 
           {/* Clean Section Switcher */}
           <div className="flex items-center gap-1.5 pt-2.5">
@@ -82,7 +89,7 @@ export function LessonGuideDialog({
                 key={item.id}
                 type="button"
                 size="xs"
-                variant={section === item.id ? 'default' : 'secondary'}
+                variant={section === item.id ? 'signal' : 'secondary'}
                 onClick={() => onSectionChange(item.id)}
               >
                 {item.label}
@@ -204,8 +211,8 @@ export function LessonGuideDialog({
           )}
         </div>
 
-        <DialogFooter className="px-6 py-3.5 border-t border-border bg-card">
-          <Button type="button" size="sm" onClick={() => onOpenChange(false)}>
+        <DialogFooter className="mx-0 mb-0 px-6 py-3.5 border-t border-border bg-card rounded-b-[16px]">
+          <Button type="button" size="sm" variant="signal" onClick={() => onOpenChange(false)}>
             {tr('Got It · Start Practice', '확인 · 연습 시작하기')}
           </Button>
         </DialogFooter>

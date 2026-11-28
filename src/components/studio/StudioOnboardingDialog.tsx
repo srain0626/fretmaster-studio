@@ -1,30 +1,20 @@
 'use client';
 
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useId, useLayoutEffect, useRef, useState } from 'react';
+import { createPortal } from 'react-dom';
 import { Button } from '@/components/ui/button';
-import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogHeader,
-  DialogTitle,
-} from '@/components/ui/dialog';
 import { BrandFretLogo } from '@/components/icons/GuitarSvgIcons';
 import { useLocale } from '@/lib/i18n';
 import {
   Activity,
   ArrowLeft,
   ArrowRight,
-  BookOpen,
-  Bug,
   Check,
-  Cloud,
   Compass,
-  Headphones,
   Layers,
   Mic,
-  MousePointerClick,
-  SlidersHorizontal,
+  Sparkles,
+  X,
 } from 'lucide-react';
 
 interface StudioOnboardingDialogProps {
@@ -40,7 +30,145 @@ interface StudioOnboardingDialogProps {
   onSkip: () => void;
 }
 
+type PreferredSide = 'top' | 'bottom' | 'left' | 'right';
+
+interface TourStepSpec {
+  badge: string;
+  target?: string;
+  preferredSide: PreferredSide;
+  pad: number;
+  rx: number;
+  titleEn: string;
+  titleKo: string;
+  descEn: string;
+  descKo: string;
+  tipsEn: string[];
+  tipsKo: string[];
+  icon: React.ReactNode;
+}
+
+interface SpotRect {
+  x: number;
+  y: number;
+  w: number;
+  h: number;
+  rx: number;
+}
+
+interface CardPos {
+  left: number;
+  top: number;
+}
+
 const GOAL_MINUTES = [10, 15, 20, 30] as const;
+
+function rectsOverlapArea(
+  ax: number,
+  ay: number,
+  aw: number,
+  ah: number,
+  bx: number,
+  by: number,
+  bw: number,
+  bh: number
+): number {
+  const ox = Math.max(0, Math.min(ax + aw, bx + bw) - Math.max(ax, bx));
+  const oy = Math.max(0, Math.min(ay + ah, by + bh) - Math.max(ay, by));
+  return ox * oy;
+}
+
+function computeCoachmarkPos(
+  spot: SpotRect | null,
+  cardW: number,
+  cardH: number,
+  preferred: PreferredSide,
+  vw: number,
+  vh: number
+): CardPos {
+  const margin = 16;
+  const gap = 14;
+  const maxL = Math.max(margin, vw - cardW - margin);
+  const maxT = Math.max(margin, vh - cardH - margin);
+
+  if (!spot) {
+    return {
+      left: Math.round(Math.max(margin, (vw - cardW) / 2)),
+      top: Math.round(Math.max(margin, (vh - cardH) / 2)),
+    };
+  }
+
+  const clampL = (v: number) => Math.max(margin, Math.min(maxL, v));
+  const clampT = (v: number) => Math.max(margin, Math.min(maxT, v));
+
+  const spotCenterX = spot.x + spot.w / 2;
+  const alignRight = spotCenterX > vw * 0.52;
+  const horizLeft = clampL(alignRight ? spot.x + spot.w - cardW : spot.x);
+  const vertTop = clampT(spot.y);
+
+  const candidates: Array<{ left: number; top: number; fits: boolean }> = [];
+  const order: PreferredSide[] = [
+    preferred,
+    preferred === 'bottom'
+      ? 'top'
+      : preferred === 'top'
+      ? 'bottom'
+      : preferred === 'left'
+      ? 'right'
+      : 'left',
+    'bottom',
+    'top',
+    'right',
+    'left',
+  ];
+
+  for (const side of order) {
+    let rawL = horizLeft;
+    let rawT = vertTop;
+    if (side === 'bottom') {
+      rawT = spot.y + spot.h + gap;
+      rawL = horizLeft;
+    } else if (side === 'top') {
+      rawT = spot.y - cardH - gap;
+      rawL = horizLeft;
+    } else if (side === 'right') {
+      rawL = spot.x + spot.w + gap;
+      rawT = vertTop;
+    } else {
+      rawL = spot.x - cardW - gap;
+      rawT = vertTop;
+    }
+
+    const fitsViewport =
+      rawL >= margin &&
+      rawL + cardW <= vw - margin &&
+      rawT >= margin &&
+      rawT + cardH <= vh - margin;
+
+    candidates.push({
+      left: Math.round(clampL(rawL)),
+      top: Math.round(clampT(rawT)),
+      fits: fitsViewport,
+    });
+  }
+
+  for (const c of candidates) {
+    if (!c.fits) continue;
+    if (rectsOverlapArea(c.left, c.top, cardW, cardH, spot.x, spot.y, spot.w, spot.h) === 0) {
+      return { left: c.left, top: c.top };
+    }
+  }
+
+  let best = candidates[0];
+  let bestOverlap = Infinity;
+  for (const c of candidates) {
+    const ov = rectsOverlapArea(c.left, c.top, cardW, cardH, spot.x, spot.y, spot.w, spot.h);
+    if (ov < bestOverlap) {
+      bestOverlap = ov;
+      best = c;
+    }
+  }
+  return { left: best.left, top: best.top };
+}
 
 export function StudioOnboardingDialog({
   open,
@@ -55,24 +183,185 @@ export function StudioOnboardingDialog({
   onSkip,
 }: StudioOnboardingDialogProps) {
   const { tr } = useLocale();
+  const maskId = useId();
+  const cardRef = useRef<HTMLDivElement | null>(null);
   const [step, setStep] = useState(0);
   const [freeExploreMode, setFreeExploreMode] = useState(initialFreeExplore);
   const [goalMinutes, setGoalMinutes] = useState(() =>
     Math.max(10, Math.round(initialDailyGoalSeconds / 60) || 15)
   );
   const [connectingAudio, setConnectingAudio] = useState(false);
+  const [spot, setSpot] = useState<SpotRect | null>(null);
+  const [cardDims, setCardDims] = useState<{ w: number; h: number }>({ w: 432, h: 256 });
+  const [cardPos, setCardPos] = useState<CardPos>({ left: 32, top: 80 });
 
   useEffect(() => {
-    if (open) {
-      setStep(0);
-      setFreeExploreMode(initialFreeExplore);
-      setGoalMinutes(Math.max(10, Math.round(initialDailyGoalSeconds / 60) || 15));
-    }
+    if (!open) return;
+    setStep(0);
+    setFreeExploreMode(initialFreeExplore);
+    setGoalMinutes(Math.max(10, Math.round(initialDailyGoalSeconds / 60) || 15));
+    (document.activeElement as HTMLElement | null)?.blur?.();
   }, [initialDailyGoalSeconds, initialFreeExplore, open]);
 
-  const totalSteps = 4;
-  const displayName = userName?.trim();
+  useEffect(() => {
+    if (!open) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') {
+        e.preventDefault();
+        onSkip();
+        onOpenChange(false);
+      }
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [onOpenChange, onSkip, open]);
 
+  const steps: TourStepSpec[] = [
+    {
+      badge: 'STEP 01 / 04',
+      target: 'lesson-header',
+      preferredSide: 'bottom',
+      pad: 8,
+      rx: 14,
+      titleEn: 'Lesson Focus & 4-Step Flow',
+      titleKo: '레슨 제목과 4단계 정복 루프',
+      descEn:
+        'Click the lesson title anytime to browse all 39 lessons, or step cleanly across Listen → Wait → Tempo Loop → Exam.',
+      descKo:
+        '레슨 제목을 누르면 39강 커리큘럼이 열리고, 우측 단계 칩과 주황색 실행 버튼으로 청음 → 대기 → 템포 → 테스트를 순서대로 진행합니다.',
+      tipsEn: [
+        'Press Ctrl+K or / anywhere to search all 39 lessons and studio actions.',
+        'Hover any ? badge to read concise tips without cluttering the screen.',
+      ],
+      tipsKo: [
+        '어디서든 Ctrl+K 또는 / 키로 39개 레슨과 튜너·가이드를 즉시 검색할 수 있습니다.',
+        '설명 문장 대신 ? 배지에 마우스를 올려 필요한 팁만 깔끔하게 확인하세요.',
+      ],
+      icon: <Sparkles className="size-4 text-primary" />,
+    },
+    {
+      badge: 'STEP 02 / 04',
+      target: 'fretboard-stage',
+      preferredSide: 'bottom',
+      pad: 6,
+      rx: 24,
+      titleEn: 'Recessed OLED Fretboard Stage',
+      titleKo: '함몰형 다크 OLED 지판 무대',
+      descEn:
+        'Color-coded 4-finger guides, synced backing audio, tempo slider, and live pitch feedback stay anchored in this high-contrast stage.',
+      descKo:
+        '4손가락 색상 운지 가이드, 템포 슬라이더, 실시간 음정 미러가 눈부심 없는 다크 OLED 무대 안에 집중 배치되어 있습니다.',
+      tipsEn: [
+        'No guitar nearby? Click any fret directly or press keys 1–4 to play Wait Mode.',
+        'Press Shift+S anytime for the full-screen zero-glare Stage Focus HUD.',
+      ],
+      tipsKo: [
+        '기타가 없을 땐 지판 프렛을 클릭하거나 키보드 1~4를 눌러 바로 연주할 수 있습니다.',
+        'Shift+S 키를 누르면 풀스크린 암실 스테이지 HUD로 전환됩니다.',
+      ],
+      icon: <Activity className="size-4 text-primary" />,
+    },
+    {
+      badge: 'STEP 03 / 04',
+      target: 'liquid-dock',
+      preferredSide: 'top',
+      pad: 6,
+      rx: 28,
+      titleEn: 'Liquid Glass Floating Dock',
+      titleKo: '하단 리퀴드 글래스 플로팅 독',
+      descEn:
+        'Connect your guitar in one click, pull up the backing mixer sheet, or open Menu for themes, tuner, analytics, and guides.',
+      descKo:
+        '기타 오디오 연결, 반주 믹서·판정 기준 시트, 그리고 메뉴(테마·언어·튜너·모션 가이드·오류 로그)가 하단 독 3버튼에 깔끔하게 수납되어 있습니다.',
+      tipsEn: [
+        'The dock clears floating sheets automatically so your fretboard stays unobstructed.',
+      ],
+      tipsKo: [
+        '믹서 시트를 열면 중앙 작업대가 위로 부드럽게 올라가 지판을 가리지 않습니다.',
+      ],
+      icon: <Layers className="size-4 text-primary" />,
+    },
+    {
+      badge: 'STEP 04 / 04',
+      preferredSide: 'bottom',
+      pad: 0,
+      rx: 16,
+      titleEn: 'Personalize Your Path & Audio',
+      titleKo: '학습 경로와 목표를 선택해 주세요',
+      descEn:
+        'Connect your guitar now or configure your progression path and daily goal—settings sync automatically.',
+      descKo:
+        '지금 바로 기타를 연결하거나 학습 경로와 하루 목표 시간을 고르시면 계정에 자동 저장됩니다.',
+      tipsEn: [],
+      tipsKo: [],
+      icon: <Compass className="size-4 text-primary" />,
+    },
+  ];
+
+  const currentStep = steps[step] ?? steps[0];
+
+  useLayoutEffect(() => {
+    if (!open) return;
+
+    const measure = () => {
+      const vw = window.innerWidth;
+      const vh = window.innerHeight;
+      if (!currentStep.target) {
+        setSpot(null);
+        setCardPos(computeCoachmarkPos(null, cardDims.w, cardDims.h, currentStep.preferredSide, vw, vh));
+        return;
+      }
+      const el = document.querySelector(`[data-tour="${currentStep.target}"]`) as HTMLElement | null;
+      if (!el) {
+        setSpot(null);
+        setCardPos(computeCoachmarkPos(null, cardDims.w, cardDims.h, currentStep.preferredSide, vw, vh));
+        return;
+      }
+      const r = el.getBoundingClientRect();
+      const pad = currentStep.pad;
+      const nextSpot: SpotRect = {
+        x: Math.max(4, r.left - pad),
+        y: Math.max(4, r.top - pad),
+        w: Math.min(vw - 8, r.width + pad * 2),
+        h: Math.min(vh - 8, r.height + pad * 2),
+        rx: currentStep.rx,
+      };
+      setSpot(nextSpot);
+      setCardPos(
+        computeCoachmarkPos(nextSpot, cardDims.w, cardDims.h, currentStep.preferredSide, vw, vh)
+      );
+    };
+
+    measure();
+    const raf = window.requestAnimationFrame(measure);
+    window.addEventListener('resize', measure);
+    window.addEventListener('scroll', measure, true);
+    return () => {
+      window.cancelAnimationFrame(raf);
+      window.removeEventListener('resize', measure);
+      window.removeEventListener('scroll', measure, true);
+    };
+  }, [cardDims.h, cardDims.w, currentStep.pad, currentStep.preferredSide, currentStep.rx, currentStep.target, open, step]);
+
+  useLayoutEffect(() => {
+    const node = cardRef.current;
+    if (!node || typeof ResizeObserver === 'undefined') return;
+    const obs = new ResizeObserver((entries) => {
+      const rect = entries[0]?.contentRect;
+      if (!rect) return;
+      setCardDims((prev) =>
+        Math.abs(prev.w - rect.width) > 2 || Math.abs(prev.h - rect.height) > 2
+          ? { w: Math.round(rect.width), h: Math.round(rect.height) }
+          : prev
+      );
+    });
+    obs.observe(node);
+    return () => obs.disconnect();
+  }, [open, step]);
+
+  if (!open || typeof document === 'undefined') return null;
+
+  const displayName = userName?.trim();
   const handleConnectClick = async () => {
     setConnectingAudio(true);
     try {
@@ -82,478 +371,280 @@ export function StudioOnboardingDialog({
     }
   };
 
-  return (
-    <Dialog
-      open={open}
-      onOpenChange={(nextOpen) => {
-        if (!nextOpen) {
-          onSkip();
-        }
-        onOpenChange(nextOpen);
-      }}
+  return createPortal(
+    <div
+      role="dialog"
+      aria-modal="true"
+      aria-label={tr('FretMaster Studio Tour', 'FretMaster 스튜디오 투어')}
+      className="fixed inset-0 z-[70]"
     >
-      <DialogContent className="sm:max-w-2xl p-0 gap-0 overflow-hidden">
-        <DialogHeader className="px-6 pt-5 pb-4 border-b border-border">
-          <div className="flex items-center justify-between pr-8 gap-3">
-            <div className="flex items-center gap-2.5">
-              <BrandFretLogo size={24} />
-              <div>
-                <DialogTitle className="text-base font-bold tracking-tight text-foreground">
-                  {displayName
-                    ? tr(
-                        `Welcome to FretMaster, ${displayName}`,
-                        `환영합니다, ${displayName}님`
-                      )
-                    : tr('Welcome to FretMaster Studio', 'FretMaster Studio에 오신 것을 환영합니다')}
-                </DialogTitle>
-                <DialogDescription className="text-xs text-muted-foreground mt-0.5">
-                  {tr(
-                    `Quick Setup Tour · Step ${step + 1} of ${totalSteps}`,
-                    `스튜디오 1분 튜토리얼 · ${step + 1} / ${totalSteps}단계`
-                  )}
-                </DialogDescription>
+      {/* Translucent Dimming Backdrop with SVG Cutout Mask */}
+      <svg
+        className="fixed inset-0 h-full w-full pointer-events-auto"
+        aria-hidden="true"
+        onClick={() => {
+          onSkip();
+          onOpenChange(false);
+        }}
+      >
+        <defs>
+          <mask id={maskId}>
+            <rect x="0" y="0" width="100%" height="100%" fill="white" />
+            {spot && (
+              <rect
+                x={spot.x}
+                y={spot.y}
+                width={spot.w}
+                height={spot.h}
+                rx={spot.rx}
+                fill="black"
+              />
+            )}
+          </mask>
+        </defs>
+        <rect
+          x="0"
+          y="0"
+          width="100%"
+          height="100%"
+          fill="rgba(7, 10, 13, 0.62)"
+          mask={`url(#${maskId})`}
+        />
+      </svg>
+
+      {/* Tangerine Spotlight Focus Frame */}
+      {spot && (
+        <div
+          className="pointer-events-none fixed border-2 border-primary shadow-[0_0_0_4px_rgba(255,107,36,0.20),0_12px_36px_rgba(255,107,36,0.30)] transition-all duration-200"
+          style={{
+            left: spot.x,
+            top: spot.y,
+            width: spot.w,
+            height: spot.h,
+            borderRadius: spot.rx,
+          }}
+        />
+      )}
+
+      {/* Collision-Free Floating Coachmark Card */}
+      <div
+        ref={cardRef}
+        onClick={(e) => e.stopPropagation()}
+        style={{ left: cardPos.left, top: cardPos.top }}
+        className="fixed z-10 w-[min(460px,calc(100vw-32px))] rounded-[18px] border border-border bg-popover p-5 text-popover-foreground shadow-[0_28px_72px_rgba(11,14,16,0.34)] nr-popover-anim space-y-4"
+      >
+        <div className="flex items-start justify-between gap-3">
+          <div className="flex items-center gap-2.5 min-w-0">
+            <BrandFretLogo size={22} />
+            <div className="min-w-0">
+              <div className="flex items-center gap-2">
+                <span className="font-mono text-[10px] font-semibold tracking-[0.12em] text-primary">
+                  {currentStep.badge}
+                </span>
+                {currentStep.icon}
+              </div>
+              <h3 className="font-display text-base font-light tracking-[-0.02em] text-foreground truncate">
+                {step === 0 && displayName
+                  ? tr(`Welcome, ${displayName}`, `환영합니다, ${displayName}님`)
+                  : tr(currentStep.titleEn, currentStep.titleKo)}
+              </h3>
+            </div>
+          </div>
+
+          <button
+            type="button"
+            onClick={() => {
+              onSkip();
+              onOpenChange(false);
+            }}
+            aria-label={tr('Close tour', '투어 닫기')}
+            className="inline-flex size-7 items-center justify-center rounded-[6px] text-muted-foreground hover:bg-secondary hover:text-foreground transition-colors"
+          >
+            <X className="size-4" />
+          </button>
+        </div>
+
+        <p className="text-xs text-muted-foreground leading-relaxed">
+          {tr(currentStep.descEn, currentStep.descKo)}
+        </p>
+
+        {step < 3 ? (
+          <ul className="space-y-1.5 rounded-[12px] border border-border bg-secondary/45 px-3.5 py-2.5 text-[11.5px] text-foreground/90">
+            {(tr('__en__', '__ko__') === '__en__' ? currentStep.tipsEn : currentStep.tipsKo).map(
+              (tip, idx) => (
+                <li key={idx} className="flex items-start gap-2">
+                  <span className="mt-1.5 size-1.5 rounded-full bg-primary shrink-0" />
+                  <span className="leading-relaxed">{tip}</span>
+                </li>
+              )
+            )}
+          </ul>
+        ) : (
+          <div className="space-y-3.5">
+            {/* Audio Connect Quick Action */}
+            <div className="flex items-center justify-between gap-2 rounded-[12px] border border-border bg-secondary/45 px-3 py-2.5">
+              <div className="flex items-center gap-2 min-w-0">
+                <Mic className="size-4 text-primary shrink-0" />
+                <span className="text-xs font-medium truncate">
+                  {isAudioRunning
+                    ? tr('Guitar DSP Live', '기타 입력 연결 완료')
+                    : tr('Connect Guitar Audio', '실시간 기타 입력 연결')}
+                </span>
+              </div>
+              <div className="flex items-center gap-1.5 shrink-0">
+                <Button
+                  type="button"
+                  size="xs"
+                  variant={isAudioRunning ? 'outline' : 'default'}
+                  disabled={connectingAudio}
+                  onClick={handleConnectClick}
+                >
+                  {isAudioRunning
+                    ? tr('Connected', '연결됨')
+                    : connectingAudio
+                    ? tr('Connecting...', '연결 중...')
+                    : tr('Connect', '연결')}
+                </Button>
+                <Button type="button" size="xs" variant="ghost" onClick={onOpenAudioSetup}>
+                  {tr('Setup', '설정')}
+                </Button>
               </div>
             </div>
 
-            {/* Step Indicator Dots */}
-            <div className="flex items-center gap-1.5" aria-hidden="true">
-              {Array.from({ length: totalSteps }).map((_, idx) => (
+            {/* Learning Path */}
+            <div className="grid grid-cols-2 gap-2">
+              <button
+                type="button"
+                onClick={() => setFreeExploreMode(false)}
+                className={`rounded-[12px] border p-2.5 text-left transition-colors ${
+                  !freeExploreMode
+                    ? 'border-primary bg-accent-soft/60'
+                    : 'border-border bg-card hover:bg-secondary/50'
+                }`}
+              >
+                <div className="flex items-center justify-between text-xs font-semibold">
+                  <span>{tr('Guided Path', '단계별 해금')}</span>
+                  {!freeExploreMode && <Check className="size-3.5 text-primary" />}
+                </div>
+                <div className="mt-1 text-[10.5px] text-muted-foreground leading-snug">
+                  {tr('Start 1-1 & unlock', '1-1부터 차근차근')}
+                </div>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => setFreeExploreMode(true)}
+                className={`rounded-[12px] border p-2.5 text-left transition-colors ${
+                  freeExploreMode
+                    ? 'border-primary bg-accent-soft/60'
+                    : 'border-border bg-card hover:bg-secondary/50'
+                }`}
+              >
+                <div className="flex items-center justify-between text-xs font-semibold">
+                  <span>{tr('Free Explore', '39강 전체 오픈')}</span>
+                  {freeExploreMode && <Check className="size-3.5 text-primary" />}
+                </div>
+                <div className="mt-1 text-[10.5px] text-muted-foreground leading-snug">
+                  {tr('Open all 39 lessons', '모든 스케일·솔로 개방')}
+                </div>
+              </button>
+            </div>
+
+            {/* Daily Target */}
+            <div className="grid grid-cols-4 gap-1.5">
+              {GOAL_MINUTES.map((mins) => (
                 <button
-                  key={idx}
+                  key={mins}
                   type="button"
-                  onClick={() => setStep(idx)}
-                  className={`h-1.5 rounded-full transition-all ${
-                    idx === step
-                      ? 'w-5 bg-primary'
-                      : idx < step
-                      ? 'w-2.5 bg-primary/45'
-                      : 'w-2.5 bg-border'
+                  onClick={() => setGoalMinutes(mins)}
+                  className={`rounded-[8px] border py-1.5 font-mono text-[11px] font-semibold transition-colors ${
+                    goalMinutes === mins
+                      ? 'border-primary bg-primary text-primary-foreground'
+                      : 'border-border bg-card text-foreground hover:bg-secondary/60'
                   }`}
-                  aria-label={`Step ${idx + 1}`}
-                />
+                >
+                  {tr(`${mins}m`, `${mins}분`)}
+                </button>
               ))}
             </div>
           </div>
-        </DialogHeader>
+        )}
 
-        <div className="px-6 py-5 min-h-[280px] flex flex-col justify-between space-y-5">
-          {/* STEP 1: Workspace Overview */}
-          {step === 0 && (
-            <div className="space-y-4">
-              <div className="space-y-1">
-                <h3 className="text-sm font-semibold text-foreground">
-                  {tr(
-                    '1. Your 3-Column Guitar Workspace',
-                    '1. 한눈에 들어오는 3단 기타 스튜디오 구조'
-                  )}
-                </h3>
-                <p className="text-xs text-muted-foreground leading-relaxed">
-                  {tr(
-                    'Everything is separated cleanly so your eyes stay on the fretboard while you play.',
-                    '연주 중 시선이 분산되지 않도록 커리큘럼·지판 실습·진도 가이드가 3개 영역으로 나뉘어 있습니다.'
-                  )}
-                </p>
-              </div>
+        {/* Footer Controls */}
+        <div className="flex items-center justify-between pt-2 border-t border-border">
+          <div className="flex items-center gap-1.5">
+            {steps.map((_, idx) => (
+              <button
+                key={idx}
+                type="button"
+                onClick={() => setStep(idx)}
+                aria-label={`Step ${idx + 1}`}
+                className={`h-1.5 rounded-full transition-all ${
+                  idx === step
+                    ? 'w-5 bg-primary'
+                    : idx < step
+                    ? 'w-2 bg-primary/45'
+                    : 'w-2 bg-border'
+                }`}
+              />
+            ))}
+          </div>
 
-              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-                <div className="rounded-xl border border-border bg-secondary/40 p-3.5 space-y-2">
-                  <div className="flex items-center justify-between text-[11px] font-mono text-primary font-semibold">
-                    <span>LEFT</span>
-                    <BookOpen className="w-3.5 h-3.5" />
-                  </div>
-                  <div className="text-xs font-semibold text-foreground">
-                    {tr('39 Lessons & Sync', '커리큘럼 & 계정 저장')}
-                  </div>
-                  <p className="text-[11px] text-muted-foreground leading-relaxed">
-                    {tr(
-                      'Switch modules, check radar analytics, toggle EN/KO, and verify cloud sync.',
-                      '9개 모듈·39강 이동, 역량 레이더, 언어·테마 및 클라우드 저장 상태를 확인합니다.'
-                    )}
-                  </p>
-                </div>
+          <div className="flex items-center gap-1.5">
+            {step > 0 ? (
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                onClick={() => setStep((s) => Math.max(0, s - 1))}
+              >
+                <ArrowLeft className="size-3.5" />
+                {tr('Back', '이전')}
+              </Button>
+            ) : (
+              <Button
+                type="button"
+                variant="ghost"
+                size="sm"
+                onClick={() => {
+                  onSkip();
+                  onOpenChange(false);
+                }}
+              >
+                {tr('Skip', '건너뛰기')}
+              </Button>
+            )}
 
-                <div className="rounded-xl border border-primary/40 bg-accent-soft/50 p-3.5 space-y-2">
-                  <div className="flex items-center justify-between text-[11px] font-mono text-primary font-semibold">
-                    <span>CENTER</span>
-                    <Activity className="w-3.5 h-3.5" />
-                  </div>
-                  <div className="text-xs font-semibold text-foreground">
-                    {tr('Fretboard & TAB', '실시간 지판 & 타브 악보')}
-                  </div>
-                  <p className="text-[11px] text-muted-foreground leading-relaxed">
-                    {tr(
-                      'Color-coded 4-finger guides, synced backing audio, tempo slider, and bar looping.',
-                      '4손가락 색상 운지 가이드, 앰프 톤 백킹 트랙, 템포 및 구간 반복 플레이어가 있습니다.'
-                    )}
-                  </p>
-                </div>
-
-                <div className="rounded-xl border border-border bg-secondary/40 p-3.5 space-y-2">
-                  <div className="flex items-center justify-between text-[11px] font-mono text-primary font-semibold">
-                    <span>RIGHT</span>
-                    <Layers className="w-3.5 h-3.5" />
-                  </div>
-                  <div className="text-xs font-semibold text-foreground">
-                    {tr('Tasks & Motion Guide', '단계 체크 & 모션 가이드')}
-                  </div>
-                    <p className="text-[11px] text-muted-foreground leading-relaxed">
-                    {tr(
-                      'See single-line fingering tips and open Harmony / Posture animations anytime.',
-                      '지금 짚을 손가락 안내와 화성·자세 애니메이션 모달을 언제든 열 수 있습니다.'
-                    )}
-                  </p>
-                </div>
-              </div>
-
-              <div className="rounded-xl border border-primary/30 bg-accent-soft/50 px-3.5 py-2.5 flex items-center gap-2.5 text-[11.5px] text-foreground">
-                <Bug className="w-4 h-4 text-primary shrink-0" />
-                <span>
-                  {tr(
-                    'Notice an issue while practicing? Use the new Report a Bug button in the left sidebar anytime.',
-                    '연습 중 오작동이나 불편을 느끼시면 왼쪽 사이드바의 버그 제보 버튼으로 바로 알려주세요.'
-                  )}
-                </span>
-              </div>
-            </div>
-          )}
-
-          {/* STEP 2: Audio Connection & Fallback Control */}
-          {step === 1 && (
-            <div className="space-y-4">
-              <div className="space-y-1">
-                <h3 className="text-sm font-semibold text-foreground">
-                  {tr(
-                    '2. Connect Guitar Audio (or Click Fretboard Directly)',
-                    '2. 기타 입력 연결하기 (없어도 바로 연습 가능)'
-                  )}
-                </h3>
-                <p className="text-xs text-muted-foreground leading-relaxed">
-                  {tr(
-                    'Plug in an audio interface, USB guitar cable, or use your built-in mic for real-time pitch recognition.',
-                    '오디오 인터페이스, USB 케이블 또는 기본 마이크로 실제 기타 소리를 실시간 판정합니다.'
-                  )}
-                </p>
-              </div>
-
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                <div className="rounded-xl border border-border bg-card p-4 space-y-3">
-                  <div className="flex items-center justify-between">
-                    <span className="inline-flex items-center gap-2 text-xs font-semibold text-foreground">
-                      <Mic className="w-4 h-4 text-primary" />
-                      {tr('Real Guitar DSP Input', '실시간 기타 DSP 입력')}
-                    </span>
-                    <span
-                      className={`text-[10px] font-mono px-2 py-0.5 rounded-full ${
-                        isAudioRunning
-                          ? 'bg-accent-soft text-primary font-semibold'
-                          : 'bg-secondary text-muted-foreground'
-                      }`}
-                    >
-                      {isAudioRunning ? tr('CONNECTED', '연결됨') : tr('STANDBY', '대기 중')}
-                    </span>
-                  </div>
-                  <p className="text-[11px] text-muted-foreground leading-relaxed">
-                    {tr(
-                      'Runs a 128-sample AudioWorklet YIN pitch tracker plus Chromatic Tuner & latency offset.',
-                      '128-sample AudioWorklet YIN 엔진으로 음정과 피킹 타이밍을 정밀하게 인식합니다.'
-                    )}
-                  </p>
-                  <div className="flex items-center gap-2">
-                    <Button
-                      type="button"
-                      size="sm"
-                      variant={isAudioRunning ? 'outline' : 'default'}
-                      disabled={connectingAudio}
-                      onClick={handleConnectClick}
-                      className="text-xs gap-1.5"
-                    >
-                      <Mic className="w-3.5 h-3.5" />
-                      {isAudioRunning
-                        ? tr('Connected (Click to Mute)', '연결 완료 (끄기)')
-                        : connectingAudio
-                        ? tr('Connecting...', '연결 중...')
-                        : tr('Connect Mic / Guitar', '마이크 · 기타 연결')}
-                    </Button>
-                    <Button
-                      type="button"
-                      size="sm"
-                      variant="ghost"
-                      onClick={onOpenAudioSetup}
-                      className="text-xs gap-1 text-muted-foreground"
-                    >
-                      <SlidersHorizontal className="w-3.5 h-3.5" />
-                      {tr('ASIO / Setup', '오디오 설정')}
-                    </Button>
-                  </div>
-                </div>
-
-                <div className="rounded-xl border border-border bg-secondary/35 p-4 space-y-2.5">
-                  <div className="inline-flex items-center gap-2 text-xs font-semibold text-foreground">
-                    <MousePointerClick className="w-4 h-4 text-primary" />
-                    {tr('No Guitar Nearby Right Now?', '지금 당장 기타가 없다면?')}
-                  </div>
-                  <p className="text-[11px] text-muted-foreground leading-relaxed">
-                    {tr(
-                      'Click any fret on the SVG neck—or press keyboard keys 1, 2, 3, 4 (matching fingers)—to audition notes and finish Wait Mode drills.',
-                      '지판 위의 프렛을 마우스로 클릭하거나 키보드 숫자 1~4(손가락 번호)를 누르면 실제 기타 소리가 나며 대기 연습을 통과할 수 있습니다.'
-                    )}
-                  </p>
-                  <div className="flex items-center gap-2 pt-1 text-[11px] font-mono text-muted-foreground">
-                    <span className="rounded border border-border bg-background px-1.5 py-0.5">
-                      Space
-                    </span>
-                    <span>{tr('Play / Stop', '재생 · 정지')}</span>
-                    <span className="rounded border border-border bg-background px-1.5 py-0.5 ml-1">
-                      1-4
-                    </span>
-                    <span>{tr('Finger Input', '손가락 입력')}</span>
-                  </div>
-                </div>
-              </div>
-            </div>
-          )}
-
-          {/* STEP 3: 4-Stage Practice Flow */}
-          {step === 2 && (
-            <div className="space-y-4">
-              <div className="space-y-1">
-                <h3 className="text-sm font-semibold text-foreground">
-                  {tr(
-                    '3. How Every Lesson Builds Mastery',
-                    '3. 모든 레슨의 4단계 정복 루프'
-                  )}
-                </h3>
-                <p className="text-xs text-muted-foreground leading-relaxed">
-                  {tr(
-                    'Use the right-hand Lesson Tasks panel to step cleanly from ear training to exam unlock.',
-                    '우측 LESSON TASKS 체크리스트를 따라 청음 → 대기 연습 → 템포 완주 → 승급 테스트 순서로 진행하세요.'
-                  )}
-                </p>
-              </div>
-
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                {[
-                  {
-                    badge: 'STEP 01',
-                    icon: Headphones,
-                    title: tr('Listen to Demo', '소리 먼저 들어보기'),
-                    desc: tr(
-                      'Hear the target melody and rhythm with synchronized backing before touching a fret.',
-                      '악보를 따라치기 전, 가이드 기타 사운드로 리듬과 높낮이를 먼저 귀에 익힙니다.'
-                    ),
-                  },
-                  {
-                    badge: 'STEP 02',
-                    icon: Check,
-                    title: tr('Step-by-Step Wait Mode', '한 음씩 따라치기 (대기)'),
-                    desc: tr(
-                      'Zero pressure: the cursor waits silently until you hit the exact note and fret.',
-                      '내가 정확한 음을 칠 때까지 기다려 주므로 초보자도 박자 압박 없이 운지를 익힙니다.'
-                    ),
-                  },
-                  {
-                    badge: 'STEP 03',
-                    icon: Activity,
-                    title: tr('Loop in Tempo (+5 BPM)', '템포 맞춰 완주 · 가속'),
-                    desc: tr(
-                      'Drag bar headers to loop tough phrases and toggle automatic +5 BPM speed-up.',
-                      '어려운 마디만 드래그해 반복하면서 완주 시 자동으로 +5 BPM씩 속도를 끌어올립니다.'
-                    ),
-                  },
-                  {
-                    badge: 'STEP 04',
-                    icon: Cloud,
-                    title: tr('Passing Exam & Cloud Sync', '승급 테스트 & 자동 저장'),
-                    desc: tr(
-                      'Score 75+ on Standard tier to unlock the next lesson and store grades in your account.',
-                      '표준 기준 75점 이상 달성 시 다음 레슨이 해금되며 성적이 계정에 영구 저장됩니다.'
-                    ),
-                  },
-                ].map((card) => {
-                  const Icon = card.icon;
-                  return (
-                    <div
-                      key={card.badge}
-                      className="rounded-xl border border-border bg-secondary/35 p-3.5 space-y-1.5"
-                    >
-                      <div className="flex items-center justify-between text-[10.5px] font-mono text-primary font-semibold">
-                        <span>{card.badge}</span>
-                        <Icon className="w-3.5 h-3.5" />
-                      </div>
-                      <div className="text-xs font-semibold text-foreground">{card.title}</div>
-                      <p className="text-[11px] text-muted-foreground leading-relaxed">
-                        {card.desc}
-                      </p>
-                    </div>
-                  );
-                })}
-              </div>
-            </div>
-          )}
-
-          {/* STEP 4: Personalize Learning Path & Daily Goal */}
-          {step === 3 && (
-            <div className="space-y-5">
-              <div className="space-y-1">
-                <h3 className="text-sm font-semibold text-foreground">
-                  {tr(
-                    '4. Customize Your Learning Mode & Daily Goal',
-                    '4. 학습 경로와 하루 목표를 선택해 주세요'
-                  )}
-                </h3>
-                <p className="text-xs text-muted-foreground leading-relaxed">
-                  {tr(
-                    'Both preferences sync to your account and can be changed anytime.',
-                    '선택한 설정은 계정에 저장되며, 스튜디오 내에서 언제든 변경할 수 있습니다.'
-                  )}
-                </p>
-              </div>
-
-              <div className="space-y-2">
-                <div className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
-                  {tr('Curriculum Progression', '커리큘럼 진행 방식')}
-                </div>
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                  <button
-                    type="button"
-                    onClick={() => setFreeExploreMode(false)}
-                    className={`rounded-xl border p-3.5 text-left transition-colors space-y-1 ${
-                      !freeExploreMode
-                        ? 'border-primary bg-accent-soft/60'
-                        : 'border-border bg-card hover:bg-secondary/50'
-                    }`}
-                  >
-                    <div className="flex items-center justify-between">
-                      <span className="text-xs font-semibold text-foreground">
-                        {tr('Guided Path (Start 1-1)', '입문 추천 · 단계별 해금')}
-                      </span>
-                      {!freeExploreMode && <Check className="w-3.5 h-3.5 text-primary" />}
-                    </div>
-                    <p className="text-[11px] text-muted-foreground leading-relaxed">
-                      {tr(
-                        'Start comfortably with the 1-1 warm-up, then unlock each stage step by step to build solid fundamentals.',
-                        '1-1 워밍업으로 가볍게 시작한 뒤 단계별로 해금하며 기초와 화성 감각을 탄탄히 쌓습니다.'
-                      )}
-                    </p>
-                  </button>
-
-                  <button
-                    type="button"
-                    onClick={() => setFreeExploreMode(true)}
-                    className={`rounded-xl border p-3.5 text-left transition-colors space-y-1 ${
-                      freeExploreMode
-                        ? 'border-primary bg-accent-soft/60'
-                        : 'border-border bg-card hover:bg-secondary/50'
-                    }`}
-                  >
-                    <div className="flex items-center justify-between">
-                      <span className="text-xs font-semibold text-foreground">
-                        {tr('Free Explore (All 39 Open)', '자유 탐색 · 39강 전체 오픈')}
-                      </span>
-                      <span className="inline-flex items-center gap-1 text-primary">
-                        {freeExploreMode ? (
-                          <Check className="w-3.5 h-3.5" />
-                        ) : (
-                          <Compass className="w-3.5 h-3.5 text-muted-foreground" />
-                        )}
-                      </span>
-                    </div>
-                    <p className="text-[11px] text-muted-foreground leading-relaxed">
-                      {tr(
-                        'Experienced player? Unlock every scale, genre groove, and solo immediately.',
-                        '이미 기초가 있다면 펜타토닉·장르·유명 솔로·즉흥 랩까지 바로 골라 연습하세요.'
-                      )}
-                    </p>
-                  </button>
-                </div>
-              </div>
-
-              <div className="space-y-2">
-                <div className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
-                  {tr('Daily Practice Target', '하루 목표 연습 시간')}
-                </div>
-                <div className="grid grid-cols-4 gap-2">
-                  {GOAL_MINUTES.map((mins) => {
-                    const active = goalMinutes === mins;
-                    return (
-                      <button
-                        key={mins}
-                        type="button"
-                        onClick={() => setGoalMinutes(mins)}
-                        className={`rounded-xl border py-2.5 text-xs font-semibold transition-colors ${
-                          active
-                            ? 'border-primary bg-primary text-primary-foreground'
-                            : 'border-border bg-card text-foreground hover:bg-secondary/60'
-                        }`}
-                      >
-                        {tr(`${mins} min`, `${mins}분`)}
-                      </button>
-                    );
-                  })}
-                </div>
-              </div>
-            </div>
-          )}
-
-          {/* Footer Navigation */}
-          <div className="flex items-center justify-between pt-3 border-t border-border">
-            <Button
-              type="button"
-              variant="ghost"
-              size="sm"
-              onClick={() => {
-                onSkip();
-                onOpenChange(false);
-              }}
-              className="text-xs text-muted-foreground"
-            >
-              {tr('Skip Tour', '건너뛰기')}
-            </Button>
-
-            <div className="flex items-center gap-2">
-              {step > 0 && (
-                <Button
-                  type="button"
-                  variant="outline"
-                  size="sm"
-                  onClick={() => setStep((s) => Math.max(0, s - 1))}
-                  className="text-xs gap-1"
-                >
-                  <ArrowLeft className="w-3.5 h-3.5" />
-                  {tr('Back', '이전')}
-                </Button>
-              )}
-
-              {step < totalSteps - 1 ? (
-                <Button
-                  type="button"
-                  size="sm"
-                  onClick={() => setStep((s) => Math.min(totalSteps - 1, s + 1))}
-                  className="text-xs gap-1"
-                >
-                  <span>{tr('Next', '다음')}</span>
-                  <ArrowRight className="w-3.5 h-3.5" />
-                </Button>
-              ) : (
-                <Button
-                  type="button"
-                  size="sm"
-                  onClick={() =>
-                    onComplete({
-                      freeExploreMode,
-                      dailyGoalSeconds: goalMinutes * 60,
-                    })
-                  }
-                  className="text-xs gap-1.5 font-semibold"
-                >
-                  <Check className="w-3.5 h-3.5" />
-                  <span>{tr('Start Practicing', '연습 시작하기')}</span>
-                </Button>
-              )}
-            </div>
+            {step < steps.length - 1 ? (
+              <Button
+                type="button"
+                variant="signal"
+                size="sm"
+                onClick={() => setStep((s) => Math.min(steps.length - 1, s + 1))}
+              >
+                <span>{tr('Next', '다음')}</span>
+                <ArrowRight className="size-3.5" />
+              </Button>
+            ) : (
+              <Button
+                type="button"
+                variant="signal"
+                size="sm"
+                onClick={() =>
+                  onComplete({
+                    freeExploreMode,
+                    dailyGoalSeconds: goalMinutes * 60,
+                  })
+                }
+              >
+                <Check className="size-3.5" />
+                <span>{tr('Start Practicing', '연습 시작하기')}</span>
+              </Button>
+            )}
           </div>
         </div>
-      </DialogContent>
-    </Dialog>
+      </div>
+    </div>,
+    document.body
   );
 }

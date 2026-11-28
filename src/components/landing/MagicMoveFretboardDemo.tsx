@@ -102,7 +102,7 @@ const STEPS: MagicMoveStep[] = [
     insightKo:
       '새 모양을 또 외울 필요 없이, 같은 5~8프렛 박스도 A로 끝내면 강렬한 마이너, C로 끝내면 따뜻한 메이저 솔로가 됩니다.',
     dots: [
-      { string: 6, fret: 5, label: 'A', color: '#E85D3F', active: true, isRoot: true },
+      { string: 6, fret: 5, label: 'A', color: '#FF6B24', active: true, isRoot: true },
       { string: 6, fret: 8, label: 'C', color: '#5B7C99', active: true, isRoot: true },
       { string: 4, fret: 7, label: 'A', color: '#B88648', active: true },
       { string: 3, fret: 5, label: 'C', color: '#5C8D76', active: true },
@@ -270,15 +270,15 @@ export function MagicMoveFretboardDemo({
         })}
       </div>
 
-      {/* SVG Neck + Persistent Finger Nodes */}
-      <div className="relative rounded-xl border border-border bg-background p-4 sm:p-5 overflow-hidden">
+      {/* SVG Neck + Persistent Finger Nodes (Recessed OLED Stage) */}
+      <div className="nr-obsidian-stage relative rounded-[16px] border border-oled-border p-4 sm:p-5 text-oled-foreground overflow-hidden">
         <div className="flex">
           <div className="relative w-7 h-44 sm:h-48 shrink-0 select-none">
             {['1e', '2B', '3G', '4D', '5A', '6E'].map((name, idx) => (
               <span
                 key={name}
                 style={{ top: `${getStringYPercent(idx + 1)}%` }}
-                className="absolute right-2 -translate-y-1/2 font-mono text-[10px] leading-none font-semibold text-muted-foreground"
+                className="absolute right-2 -translate-y-1/2 font-mono text-[10px] leading-none font-semibold text-oled-muted"
               >
                 {name}
               </span>
@@ -292,10 +292,10 @@ export function MagicMoveFretboardDemo({
               className="w-full h-full block"
               aria-hidden="true"
             >
-              <circle cx="50" cy="90" r="6" fill="var(--border)" opacity="0.7" />
-              <circle cx="250" cy="90" r="6" fill="var(--border)" opacity="0.7" />
-              <circle cx="450" cy="58" r="5" fill="var(--border)" opacity="0.7" />
-              <circle cx="450" cy="122" r="5" fill="var(--border)" opacity="0.7" />
+              <circle cx="50" cy="90" r="6" fill="rgba(255,255,255,0.16)" />
+              <circle cx="250" cy="90" r="6" fill="rgba(255,255,255,0.16)" />
+              <circle cx="450" cy="58" r="5" fill="rgba(255,255,255,0.16)" />
+              <circle cx="450" cy="122" r="5" fill="rgba(255,255,255,0.16)" />
 
               {[0, 100, 200, 300, 400, 500].map((x, idx) => (
                 <line
@@ -304,7 +304,7 @@ export function MagicMoveFretboardDemo({
                   y1={20}
                   x2={x}
                   y2={160}
-                  stroke="var(--border)"
+                  stroke="rgba(255,255,255,0.18)"
                   strokeWidth={idx === 0 ? 3 : 1.5}
                 />
               ))}
@@ -319,8 +319,8 @@ export function MagicMoveFretboardDemo({
                     y1={y}
                     x2={500}
                     y2={y}
-                    stroke="var(--muted-foreground)"
-                    strokeOpacity={0.45}
+                    stroke="#d5dcd9"
+                    strokeOpacity={0.48}
                     strokeWidth={strokeWidth}
                   />
                 );
@@ -344,10 +344,10 @@ export function MagicMoveFretboardDemo({
                     backgroundColor: dot.color,
                   }}
                   transition={STUDIO_SPRING}
-                  className={`absolute -ml-4 -mt-4 w-8 h-8 rounded-full flex items-center justify-center font-mono text-xs font-bold text-white shadow-sm select-none ${
+                  className={`no-press-scale absolute -ml-4 -mt-4 w-8 h-8 rounded-full flex items-center justify-center font-mono text-xs font-bold text-white shadow-sm select-none ${
                     dot.active ? 'cursor-pointer' : 'pointer-events-none'
                   } ${
-                    dot.isRoot ? 'ring-2 ring-primary ring-offset-2 ring-offset-background' : ''
+                    dot.isRoot ? 'ring-2 ring-primary ring-offset-2 ring-offset-[#0d1113]' : ''
                   }`}
                 >
                   {dot.label}
@@ -361,7 +361,7 @@ export function MagicMoveFretboardDemo({
           {[5, 6, 7, 8, 9].map((fret) => (
             <div
               key={fret}
-              className="flex-1 text-center font-mono text-[10px] font-medium text-muted-foreground"
+              className="flex-1 text-center font-mono text-[10px] font-medium text-oled-muted"
             >
               {fret}F
             </div>

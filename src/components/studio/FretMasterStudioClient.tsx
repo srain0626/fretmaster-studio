@@ -8,12 +8,14 @@ import React, {
   useState,
   useSyncExternalStore,
 } from 'react';
+import Link from 'next/link';
 import { AnimatePresence, motion } from 'framer-motion';
 import { Surface, Tabs as HeroTabs } from '@heroui/react';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Progress } from '@/components/ui/progress';
 import { Switch } from '@/components/ui/switch';
+import { HelpHint, Hint } from '@/components/ui/tooltip';
 import {
   Select,
   SelectContent,
@@ -21,7 +23,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select';
-import { MasteryRingSvg } from '@/components/icons/GuitarSvgIcons';
+import { BrandFretLogo, MasteryRingSvg } from '@/components/icons/GuitarSvgIcons';
 import { ElectricFretboard } from '@/components/fretboard/ElectricFretboard';
 import { TabTimeline } from '@/components/fretboard/TabTimeline';
 import { LivePitchTelemetryBar } from '@/components/audio/LivePitchTelemetryBar';
@@ -30,9 +32,12 @@ import { AudioInterfaceModal } from '@/components/audio/AudioInterfaceModal';
 import type { User } from '@supabase/supabase-js';
 import { AuthGateCard } from '@/components/auth/AuthGateCard';
 import { useBugReport } from '@/components/feedback/BugReportContext';
+import { CommandPaletteDialog } from '@/components/studio/CommandPaletteDialog';
 import { ErrorReportDialog } from '@/components/studio/ErrorReportDialog';
+import { StageFocusHudModal } from '@/components/studio/StageFocusHudModal';
+import { StudioLiquidDock } from '@/components/studio/StudioLiquidDock';
 import { StudioOnboardingDialog } from '@/components/studio/StudioOnboardingDialog';
-import { CurriculumSidebar } from '@/components/curriculum/CurriculumSidebar';
+import { CurriculumBrowserDialog } from '@/components/curriculum/CurriculumSidebar';
 import { SkillAnalyticsDialog } from '@/components/curriculum/SkillAnalyticsDialog';
 import { MasteryReportDialog } from '@/components/practice/MasteryReportDialog';
 import {
@@ -107,6 +112,7 @@ import type {
 import {
   BookOpen,
   Check,
+  ChevronDown,
   ChevronRight,
   Circle,
   Headphones,
@@ -116,6 +122,7 @@ import {
   RefreshCw,
   Volume2,
   VolumeX,
+  X,
 } from 'lucide-react';
 
 const STORAGE_PROGRESS_KEY = 'fretmaster_studio_progress_v1';
@@ -283,6 +290,10 @@ function AuthenticatedStudioWorkspace({
   const [errorLogs, setErrorLogs] = useState<SafeErrorLogEntry[]>([]);
   const [guideDialogOpen, setGuideDialogOpen] = useState(false);
   const [guideSection, setGuideSection] = useState<GuideSection>('both');
+  const [curriculumOpen, setCurriculumOpen] = useState(false);
+  const [commandPaletteOpen, setCommandPaletteOpen] = useState(false);
+  const [stageHudOpen, setStageHudOpen] = useState(false);
+  const [practiceDeckOpen, setPracticeDeckOpen] = useState(false);
 
   const pushSafeError = useCallback(
     (
@@ -325,7 +336,10 @@ function AuthenticatedStudioWorkspace({
     !analyticsOpen &&
     !onboardingOpen &&
     !guideDialogOpen &&
-    !errorModalOpen;
+    !errorModalOpen &&
+    !curriculumOpen &&
+    !commandPaletteOpen &&
+    !stageHudOpen;
 
   // Ear Copy & Improvisation Lab State
   const [earCopyUnlockedIndices, setEarCopyUnlockedIndices] = useState<Set<number>>(new Set());
@@ -339,7 +353,7 @@ function AuthenticatedStudioWorkspace({
   // User Progress, Cloud Sync & Theme State
   const [progress, setProgress] = useState<UserProgressState>(DEFAULT_PROGRESS);
   const [syncStatus, setSyncStatus] = useState<SyncStatus>('idle');
-  const { themePreference, setThemePreference } = useThemePreference();
+  const { themePreference, setThemePreference, resolvedTheme } = useThemePreference();
 
   // Refs for real-time callback sync
   const cloudHydratedRef = useRef<boolean>(false);
@@ -381,7 +395,7 @@ function AuthenticatedStudioWorkspace({
     progressRef.current = progress;
   }, [progress]);
 
-  const { locale, tr } = useLocale();
+  const { locale, setPreference: setLocalePref, tr } = useLocale();
 
   const rawLesson = useMemo(
     () => getLessonById(selectedLessonId) ?? ALL_LESSONS[0],
@@ -2080,8 +2094,82 @@ function AuthenticatedStudioWorkspace({
   // Keyboard shortcuts
   useEffect(() => {
     const onKeyDown = (e: KeyboardEvent) => {
-      const tag = (e.target as HTMLElement)?.tagName;
-      if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT') return;
+      const targetEl = e.target as HTMLElement | null;
+      const tag = targetEl?.tagName;
+      if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT' || targetEl?.isContentEditable) {
+        return;
+      }
+
+      if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'k') {
+        e.preventDefault();
+        setCommandPaletteOpen((v) => !v);
+        return;
+      }
+
+      if (!e.ctrlKey && !e.metaKey && !e.altKey && e.key === '/') {
+        e.preventDefault();
+        setCommandPaletteOpen(true);
+        return;
+      }
+
+      if (e.shiftKey && e.key.toLowerCase() === 's' && !e.ctrlKey && !e.metaKey) {
+        e.preventDefault();
+        setStageHudOpen((v) => !v);
+        return;
+      }
+
+      if (e.key === 'Escape') {
+        if (stageHudOpen) {
+          setStageHudOpen(false);
+          return;
+        }
+        if (commandPaletteOpen) {
+          setCommandPaletteOpen(false);
+          return;
+        }
+        if (practiceDeckOpen) {
+          setPracticeDeckOpen(false);
+          return;
+        }
+      }
+
+      const anyOverlayOpen =
+        commandPaletteOpen ||
+        curriculumOpen ||
+        tunerOpen ||
+        audioSetupOpen ||
+        analyticsOpen ||
+        onboardingOpen ||
+        guideDialogOpen ||
+        reportOpen ||
+        errorModalOpen;
+
+      if (!anyOverlayOpen && !e.ctrlKey && !e.metaKey && !e.altKey && !e.shiftKey) {
+        const lower = e.key.toLowerCase();
+        if (lower === 'c') {
+          e.preventDefault();
+          setCurriculumOpen(true);
+          return;
+        }
+        if (lower === 't') {
+          e.preventDefault();
+          setTunerOpen(true);
+          return;
+        }
+        if (lower === 'g') {
+          e.preventDefault();
+          setGuideSection('both');
+          setGuideDialogOpen(true);
+          return;
+        }
+        if (lower === 'p') {
+          e.preventDefault();
+          setAnalyticsOpen(true);
+          return;
+        }
+      }
+
+      if (commandPaletteOpen || curriculumOpen) return;
 
       if (e.code === 'Space') {
         e.preventDefault();
@@ -2113,7 +2201,26 @@ function AuthenticatedStudioWorkspace({
 
     window.addEventListener('keydown', onKeyDown);
     return () => window.removeEventListener('keydown', onKeyDown);
-  }, [activeNoteIndex, ampPreset, handleFretClick, lesson.notes, locale, toggleTransport, tr]);
+  }, [
+    activeNoteIndex,
+    ampPreset,
+    analyticsOpen,
+    audioSetupOpen,
+    commandPaletteOpen,
+    curriculumOpen,
+    errorModalOpen,
+    guideDialogOpen,
+    handleFretClick,
+    lesson.notes,
+    locale,
+    onboardingOpen,
+    practiceDeckOpen,
+    reportOpen,
+    stageHudOpen,
+    toggleTransport,
+    tr,
+    tunerOpen,
+  ]);
 
   const handleToggleAudio = async () => {
     if (isAudioRunning) {
@@ -2372,65 +2479,85 @@ function AuthenticatedStudioWorkspace({
     }
   }, [lesson.id, lesson.notes, livePitch.isActive, livePitch.midiFloat, livePitch.timestampMs]);
 
+  const prevLesson = useMemo(() => {
+    const idx = ALL_LESSONS.findIndex((l) => l.id === lesson.id);
+    return idx > 0 ? ALL_LESSONS[idx - 1] : undefined;
+  }, [lesson.id]);
+
   const showFourthLabTab = lesson.supportsEarCopy || lesson.supportsJam || !isPhase1;
 
   return (
     <StudioMotionProvider>
-      <div className="min-h-screen grid grid-cols-1 lg:grid-cols-[232px_minmax(0,1fr)_284px] bg-background text-foreground">
-        {/* ==================== 1. LEFT SIDEBAR ==================== */}
-        <CurriculumSidebar
-          selectedLessonId={lesson.id}
-          onSelectLesson={handleSelectLesson}
-          progress={progress}
-          onToggleFreeExplore={(enabled) =>
-            setProgress((prev) => ({ ...prev, freeExploreMode: enabled }))
-          }
-          onOpenAnalytics={() => setAnalyticsOpen(true)}
-          onOpenOnboarding={() => setOnboardingOpen(true)}
-          themePreference={themePreference}
-          onThemeChange={setThemePreference}
-          user={
-            user
-              ? {
-                  email: user.email,
-                  name:
-                    (user.user_metadata?.full_name as string | undefined) ??
-                    (user.user_metadata?.name as string | undefined),
-                  avatarUrl:
-                    (user.user_metadata?.avatar_url as string | undefined) ??
-                    (user.user_metadata?.picture as string | undefined),
-                }
-              : {
-                  email: tr('Guest Preview (1-1 · 3-1 · 4-1)', '무료 체험 중 (1-1 · 3-1 · 4-1)'),
-                  name: tr('Guest Mode', '체험 모드'),
-                }
-          }
-          syncStatus={syncStatus}
-          onSignOut={() => (isGuestMode ? onGuestSignIn(lesson.id) : void onSignOut())}
-          errorLogCount={errorLogs.length}
-          onOpenErrorModal={() => setErrorModalOpen(true)}
-          onOpenBugReport={() =>
-            openBugReport({ lessonId: lesson.id, diagnostics: errorLogs })
-          }
-          isAdmin={isAdmin}
-        />
+      <div className="relative min-h-screen flex flex-col bg-background text-foreground overflow-x-clip">
+        <div className="nr-ambient-aura" aria-hidden="true" />
 
-        {/* ==================== 2. CENTER MAIN WORKSPACE ==================== */}
-        <main className="min-w-0 px-4 sm:px-7 py-5 space-y-5">
+        {/* ==================== 1. BORDERLESS TOP BAR ==================== */}
+        <header className="relative z-10 h-14 w-full max-w-[1300px] mx-auto px-4 sm:px-6 flex items-center justify-between gap-3 shrink-0">
+          <div className="flex items-center gap-3 min-w-0">
+            <Link
+              href="/"
+              className="inline-flex items-center gap-2 shrink-0 hover:opacity-85 transition-opacity"
+            >
+              <BrandFretLogo size={22} />
+              <span className="font-display text-base font-normal tracking-[-0.02em] text-foreground">
+                FretMaster
+              </span>
+            </Link>
+
+            <span className="hidden sm:inline-block w-px h-4 bg-border shrink-0" aria-hidden="true" />
+
+            <Hint
+              content={tr('Open 39-Lesson Curriculum Browser', '39강 커리큘럼 브라우저 열기')}
+              kbd="C"
+              side="bottom"
+            >
+              <button
+                type="button"
+                onClick={() => setCurriculumOpen(true)}
+                className="inline-flex items-center gap-1.5 min-w-0 max-w-[260px] rounded-full border border-border bg-card/80 hover:bg-card px-3 py-1 text-xs text-muted-foreground hover:text-foreground transition-colors"
+              >
+                <span className="truncate hidden md:inline">
+                  {modInfo?.phaseTitle.split('·')[0].trim()}
+                </span>
+                <ChevronRight className="w-3 h-3 hidden md:inline shrink-0" />
+                <span className="truncate">M{modInfo?.number}</span>
+                <span className="font-mono font-semibold text-primary shrink-0">{lesson.code}</span>
+              </button>
+            </Hint>
+          </div>
+
+          <LivePitchTelemetryBar
+            isAudioRunning={isAudioRunning}
+            onToggleAudio={handleToggleAudio}
+            livePitch={livePitch}
+            telemetry={audioTelemetry}
+            config={audioConfig}
+            onOpenTuner={() => setTunerOpen(true)}
+            onOpenAudioSetup={() => setAudioSetupOpen(true)}
+            onOpenCommandPalette={() => setCommandPaletteOpen(true)}
+            audioError={audioError}
+            onOpenErrorModal={() => setErrorModalOpen(true)}
+          />
+        </header>
+
+        {/* ==================== 2. HERO CENTERPIECE WORKSPACE ==================== */}
+        <main
+          className={`relative z-10 flex-1 w-full max-w-[1300px] mx-auto px-4 sm:px-6 flex flex-col justify-center gap-4 pt-2 transition-[padding] duration-300 ${
+            practiceDeckOpen ? 'pb-80' : 'pb-24'
+          }`}
+        >
           {/* Guest Sandbox Trial Banner */}
           {isGuestMode && (
-            <div className="rounded-xl border border-primary/35 bg-accent-soft px-4 py-2.5 flex flex-wrap items-center justify-between gap-3">
-              <div className="flex flex-wrap items-center gap-2 text-xs text-foreground">
-                <Badge variant="default" className="font-mono text-[10px]">
-                  {tr('GUEST SANDBOX', '무료 체험 모드')}
-                </Badge>
-                <span className="font-medium">
+            <div className="rounded-[14px] border border-primary/35 bg-card/90 px-4 py-2.5 flex flex-wrap items-center justify-between gap-3">
+              <div className="flex flex-wrap items-center gap-2 text-xs text-foreground min-w-0">
+                <Badge variant="signal">{tr('GUEST SANDBOX', '무료 체험 모드')}</Badge>
+                <span className="font-medium truncate">
                   {tr(
-                    'Try starter lessons right away. Sign in with Google to unlock all 39 lessons and cloud save.',
-                    '로그인 없이 대표 3강을 체험 중입니다. Google 로그인으로 39강 전체와 진도 저장을 여세요.'
+                    'Try starter lessons right away. Sign in with Google to unlock all 39 lessons.',
+                    '로그인 없이 대표 3강을 체험 중입니다. Google 로그인으로 39강 전체를 여세요.'
                   )}
                 </span>
-                <div className="inline-flex items-center gap-1">
+                <div className="inline-flex items-center gap-1 shrink-0">
                   {(['m1-1', 'm3-1', 'm4-1'] as const).map((id) => {
                     const item = getLessonById(id);
                     if (!item) return null;
@@ -2440,10 +2567,10 @@ function AuthenticatedStudioWorkspace({
                         key={id}
                         type="button"
                         onClick={() => handleSelectLesson(item)}
-                        className={`rounded-md px-2 py-0.5 font-mono text-[11px] font-semibold border transition-colors ${
+                        className={`rounded-[6px] px-2 py-0.5 font-mono text-[11px] font-semibold border transition-colors ${
                           active
                             ? 'border-primary bg-primary text-primary-foreground'
-                            : 'border-border bg-card text-foreground hover:border-primary/50'
+                            : 'border-border bg-secondary text-foreground hover:border-primary/50'
                         }`}
                       >
                         {item.code}
@@ -2455,57 +2582,131 @@ function AuthenticatedStudioWorkspace({
               <Button
                 type="button"
                 size="sm"
+                variant="signal"
                 onClick={() => onGuestSignIn(lesson.id)}
-                className="rounded-lg text-xs font-semibold shrink-0"
+                className="shrink-0"
               >
                 {tr('Save & Unlock 39 Lessons', 'Google 로그인 · 39강 열기')}
               </Button>
             </div>
           )}
 
-          {/* Minimal 1-Line Top Bar: Breadcrumb + Audio Status */}
-          <div className="flex flex-wrap items-center justify-between gap-3">
-            <nav className="flex items-center gap-1.5 text-xs text-muted-foreground">
-              <span>{modInfo?.phaseTitle.split('·')[0].trim()}</span>
-              <ChevronRight className="w-3.5 h-3.5" />
-              <span>Module {modInfo?.number}</span>
-              <ChevronRight className="w-3.5 h-3.5" />
-              <span className="font-medium text-foreground font-mono">{lesson.code}</span>
-            </nav>
+          {/* Lesson Title Selector + Practice Step Pills + Single Primary Signal CTA */}
+          <div
+            data-tour="lesson-header"
+            className="flex flex-wrap items-center justify-between gap-3"
+          >
+            <div className="flex items-center gap-2.5 min-w-0 flex-1">
+              <button
+                type="button"
+                onClick={() => setCurriculumOpen(true)}
+                className="group inline-flex items-center gap-2.5 min-w-0 text-left rounded-[12px] px-1.5 py-1 -ml-1.5 hover:bg-card/60 transition-colors"
+              >
+                <span className="rounded-[6px] border border-oled-border bg-oled px-2 py-0.5 font-mono text-xs font-bold text-oled-foreground shrink-0">
+                  {lesson.code}
+                </span>
+                <motion.h1
+                  key={lesson.id}
+                  initial={{ opacity: 0, y: 4 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  transition={{ duration: 0.16, ease: SILK_EASE }}
+                  className="font-display text-2xl sm:text-[26px] font-light tracking-[-0.025em] text-foreground leading-tight truncate min-w-0"
+                >
+                  {lesson.title}
+                </motion.h1>
+                <ChevronDown className="size-4 text-muted-foreground group-hover:text-foreground shrink-0 transition-colors" />
+              </button>
 
-            <LivePitchTelemetryBar
-              isAudioRunning={isAudioRunning}
-              onToggleAudio={handleToggleAudio}
-              livePitch={livePitch}
-              telemetry={audioTelemetry}
-              config={audioConfig}
-              onOpenTuner={() => setTunerOpen(true)}
-              onOpenAudioSetup={() => setAudioSetupOpen(true)}
-              audioError={audioError}
-              onOpenErrorModal={() => setErrorModalOpen(true)}
-            />
+              <HelpHint
+                content={`${lesson.harmonyConcept.formula} — ${lesson.harmonyConcept.earTip}`}
+                side="bottom"
+              />
+            </div>
+
+            {/* Practice Steps + Primary CTA */}
+            <div className="flex flex-wrap items-center gap-2 shrink-0">
+              <div className="inline-flex items-center rounded-full border border-border bg-card/85 p-1 gap-0.5">
+                {lessonTasks.map((task) => {
+                  const isActive = practiceMode === task.mode;
+                  const isDone = completedTasks.has(task.mode);
+                  return (
+                    <Hint key={task.mode} content={task.hint} side="bottom">
+                      <button
+                        type="button"
+                        onClick={() => handlePracticeModeChange(task.mode)}
+                        className={`inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-[11.5px] font-medium whitespace-nowrap transition-colors ${
+                          isActive
+                            ? 'bg-foreground text-background shadow-xs'
+                            : 'text-muted-foreground hover:text-foreground'
+                        }`}
+                      >
+                        {isDone ? (
+                          <Check className="size-3 text-primary stroke-[2.5] shrink-0" />
+                        ) : isActive ? (
+                          <span className="size-1.5 rounded-full bg-primary shrink-0" />
+                        ) : (
+                          <Circle className="size-2.5 opacity-30 shrink-0" />
+                        )}
+                        <span>{task.label}</span>
+                      </button>
+                    </Hint>
+                  );
+                })}
+              </div>
+
+              {lastTelemetry && lastTelemetry.lessonId === lesson.id && !lesson.skipExam && (
+                <Button
+                  type="button"
+                  size="sm"
+                  variant="keycap"
+                  onClick={() => setReportOpen(true)}
+                >
+                  {tr(`Score ${lastTelemetry.score}`, `최근 ${lastTelemetry.score}점`)}
+                </Button>
+              )}
+
+              {lesson.skipExam &&
+                nextLesson &&
+                !(practiceMode === 'loop' && completedTasks.has('loop')) && (
+                  <Button
+                    type="button"
+                    size="sm"
+                    variant="keycap"
+                    onClick={handleAdvanceToNextLesson}
+                  >
+                    <span>
+                      {tr(`Next (${nextLesson.code})`, `다음 (${nextLesson.code})`)}
+                    </span>
+                    <ChevronRight className="w-3.5 h-3.5" />
+                  </Button>
+                )}
+
+              <Button type="button" size="sm" variant="signal" onClick={primaryCta.onClick}>
+                {primaryCta.label}
+              </Button>
+            </div>
           </div>
 
           {/* Live Vibrato Pitch-Contour Coaching Bar (shown when vibrato is detected) */}
           {liveVibrato?.isDetected && (
-            <div className="rounded-xl border border-primary/35 bg-card px-4 py-2 flex flex-wrap items-center justify-between gap-3">
+            <div className="nr-obsidian-pod rounded-[14px] border border-oled-border px-4 py-2 text-oled-foreground flex flex-wrap items-center justify-between gap-3">
               <div className="flex items-center gap-2 text-xs">
                 <span className="h-2 w-2 rounded-full bg-primary" />
-                <span className="font-semibold text-foreground">
+                <span className="font-semibold">
                   {tr('Live Vibrato Contour', '실시간 비브라토 피치 궤적')}
                 </span>
                 <span className="font-mono text-primary font-semibold tabular-nums">
                   ±{Math.round(liveVibrato.widthCents / 2)}c · {liveVibrato.rateHz} Hz
                 </span>
-                <span className="text-muted-foreground">
+                <span className="text-oled-muted">
                   ({tr(`Stability ${liveVibrato.stabilityScore}%`, `안정도 ${liveVibrato.stabilityScore}%`)})
                 </span>
               </div>
               <svg viewBox="0 0 120 24" className="w-28 h-6 overflow-visible" aria-hidden="true">
-                <line x1="0" y1="12" x2="120" y2="12" stroke="var(--border)" strokeDasharray="3 3" />
+                <line x1="0" y1="12" x2="120" y2="12" stroke="rgba(255,255,255,0.16)" strokeDasharray="3 3" />
                 <polyline
                   fill="none"
-                  stroke="var(--primary)"
+                  stroke="#ff6b24"
                   strokeWidth="2"
                   strokeLinecap="round"
                   strokeLinejoin="round"
@@ -2521,7 +2722,7 @@ function AuthenticatedStudioWorkspace({
             </div>
           )}
 
-          {/* Primary Viewport: Electric Guitar Fretboard + Integrated Player Bar */}
+          {/* Primary Recessed OLED Stage: Electric Guitar Fretboard + Integrated Player Bar */}
           <ElectricFretboard
             phaseId={lesson.phaseId}
             notes={lesson.notes}
@@ -2557,83 +2758,85 @@ function AuthenticatedStudioWorkspace({
             capoFret={audioConfig.capoFret ?? 0}
           />
 
-          {/* Lesson Title (No Subtitle) + Primary Action CTA */}
-          <div className="flex flex-wrap sm:flex-nowrap items-center justify-between gap-4 pt-1">
-            <motion.h1
-              key={lesson.id}
-              initial={{ opacity: 0, y: 4 }}
-              animate={{ opacity: 1, y: 0 }}
-              transition={{ duration: 0.16, ease: SILK_EASE }}
-              className="text-lg sm:text-xl font-bold tracking-tight text-foreground leading-snug"
-            >
-              {lesson.title}
-            </motion.h1>
+          {/* 1-Line Live Focus + Dual-Guide Entry + Conditional Lab Switcher */}
+          <div className="rounded-[14px] border border-border bg-card/85 px-4 py-2.5 flex flex-wrap items-center justify-between gap-3">
+            <div className="flex items-center gap-2.5 min-w-0 flex-1">
+              <span className="nr-whisper shrink-0">{tr('FOCUS', '코칭')}</span>
+              {feedbackBanner && (
+                <Badge variant={feedbackBanner.result === 'miss' ? 'outline' : 'signal'}>
+                  {feedbackBanner.title}
+                </Badge>
+              )}
+              <p className="text-xs text-foreground/90 truncate min-w-0">
+                {currentFocusSentence}
+              </p>
+            </div>
 
-            <div className="flex items-center gap-2 shrink-0">
-              {lastTelemetry && lastTelemetry.lessonId === lesson.id && !lesson.skipExam && (
+            <div className="flex flex-wrap items-center gap-1.5 shrink-0">
+              <Hint content={tr('Open Harmony Point explainer', '화성 포인트 모션 가이드 열기')} kbd="G" side="top">
                 <Button
                   type="button"
-                  size="sm"
-                  variant="outline"
-                  onClick={() => setReportOpen(true)}
+                  size="xs"
+                  variant="keycap"
+                  onClick={() => {
+                    setGuideSection('harmony');
+                    setGuideDialogOpen(true);
+                  }}
                 >
-                  {tr(`Last Result (${lastTelemetry.score})`, `최근 결과 (${lastTelemetry.score}점)`)}
+                  <Layers className="size-3 text-primary" />
+                  <span>{tr('Harmony', '화성 포인트')}</span>
                 </Button>
+              </Hint>
+
+              <Hint content={tr('Open Posture & Fix explainer', '자세 · 교정 모션 가이드 열기')} side="top">
+                <Button
+                  type="button"
+                  size="xs"
+                  variant="keycap"
+                  onClick={() => {
+                    setGuideSection('posture');
+                    setGuideDialogOpen(true);
+                  }}
+                >
+                  <BookOpen className="size-3 text-primary" />
+                  <span>{tr('Posture', '자세 · 교정')}</span>
+                </Button>
+              </Hint>
+
+              {showFourthLabTab && (
+                <HeroTabs
+                  selectedKey={bottomTab}
+                  onSelectionChange={(key) => setBottomTab(String(key) as BottomTabKey)}
+                  variant="secondary"
+                  orientation="horizontal"
+                  className="w-auto ml-1"
+                >
+                  <HeroTabs.ListContainer>
+                    <HeroTabs.List aria-label={tr('Practice tools', '연습 도구')} className="flex flex-row gap-1">
+                      <HeroTabs.Tab
+                        id="tab"
+                        className="w-auto px-2.5 py-1 text-xs font-medium whitespace-nowrap"
+                      >
+                        {tr('TAB Score', '타브 악보')}
+                        <HeroTabs.Indicator />
+                      </HeroTabs.Tab>
+                      <HeroTabs.Tab
+                        id="lab"
+                        className="w-auto px-2.5 py-1 text-xs font-medium whitespace-nowrap"
+                      >
+                        {lesson.supportsEarCopy
+                          ? tr('Ear Copy Lab', '귀카피 도구')
+                          : lesson.supportsJam
+                          ? tr('Improv & Hum', '즉흥 · 허밍')
+                          : tr('Audio Mixer', '소리 믹서')}
+                        <HeroTabs.Indicator />
+                      </HeroTabs.Tab>
+                    </HeroTabs.List>
+                  </HeroTabs.ListContainer>
+                </HeroTabs>
               )}
-              {lesson.skipExam &&
-                nextLesson &&
-                !(practiceMode === 'loop' && completedTasks.has('loop')) && (
-                  <Button
-                    type="button"
-                    size="sm"
-                    variant="outline"
-                    onClick={handleAdvanceToNextLesson}
-                  >
-                    <span>
-                      {tr(`Next Lesson (${nextLesson.code})`, `다음 레슨 (${nextLesson.code})`)}
-                    </span>
-                    <ChevronRight className="w-3.5 h-3.5 ml-1" />
-                  </Button>
-                )}
-              <Button type="button" size="sm" onClick={primaryCta.onClick}>
-                {primaryCta.label}
-              </Button>
             </div>
           </div>
-
-          {/* Bottom Progressive Disclosure Tabs (Only shown when Lab/Mixer tab applies) */}
-          {showFourthLabTab && (
-            <HeroTabs
-              selectedKey={bottomTab}
-              onSelectionChange={(key) => setBottomTab(String(key) as BottomTabKey)}
-              variant="secondary"
-              orientation="horizontal"
-              className="w-full"
-            >
-              <HeroTabs.ListContainer>
-                <HeroTabs.List aria-label={tr('Practice tools', '연습 도구')} className="flex flex-row gap-4">
-                  <HeroTabs.Tab
-                    id="tab"
-                    className="w-auto px-1 pb-2.5 text-sm font-medium whitespace-nowrap"
-                  >
-                    {tr('TAB Score', '타브 악보')}
-                    <HeroTabs.Indicator />
-                  </HeroTabs.Tab>
-                  <HeroTabs.Tab
-                    id="lab"
-                    className="w-auto px-1 pb-2.5 text-sm font-medium whitespace-nowrap"
-                  >
-                    {lesson.supportsEarCopy
-                      ? tr('Ear Copy Lab', '귀카피 도구')
-                      : lesson.supportsJam
-                      ? tr('Improv & Hum', '즉흥 · 허밍')
-                      : tr('Audio Mixer', '소리 믹서')}
-                    <HeroTabs.Indicator />
-                  </HeroTabs.Tab>
-                </HeroTabs.List>
-              </HeroTabs.ListContainer>
-            </HeroTabs>
-          )}
 
           {/* Single Active Tab Content */}
           <AnimatePresence initial={false}>
@@ -2678,9 +2881,9 @@ function AuthenticatedStudioWorkspace({
                 transition={{ duration: 0.15, ease: SILK_EASE }}
               >
                 {lesson.supportsEarCopy ? (
-                  <Surface variant="default" className="rounded-xl border border-border p-5 space-y-3.5">
-                    <div className="flex items-center justify-between">
-                      <span className="text-sm font-semibold">
+                  <Surface variant="default" className="rounded-[16px] border border-border bg-card p-5 space-y-3.5">
+                    <div className="flex items-center justify-between gap-2">
+                      <span className="font-display text-sm font-normal">
                         {tr(
                           `Ear Copy Transcription (${earCopyUnlockedIndices.size} / ${lesson.notes.length})`,
                           `귀카피 채보 (${earCopyUnlockedIndices.size} / ${lesson.notes.length})`
@@ -2690,6 +2893,7 @@ function AuthenticatedStudioWorkspace({
                         <Button
                           type="button"
                           size="sm"
+                          variant="signal"
                           onClick={() => {
                             setEnableGuideGuitar(true);
                             toggleTransport();
@@ -2725,7 +2929,7 @@ function AuthenticatedStudioWorkspace({
                     )}
                   </Surface>
                 ) : lesson.supportsJam ? (
-                  <Surface variant="default" className="rounded-xl border border-border p-5 space-y-4">
+                  <Surface variant="default" className="rounded-[16px] border border-border bg-card p-5 space-y-4">
                     <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
                       {(
                         [
@@ -2735,7 +2939,7 @@ function AuthenticatedStudioWorkspace({
                           { label: tr('Expression', '표현 기법'), val: improvMetrics.expressiveArticulation },
                         ] as const
                       ).map((m) => (
-                        <div key={m.label} className="rounded-lg bg-secondary/50 p-3 space-y-1.5">
+                        <div key={m.label} className="rounded-[12px] border border-border/70 bg-secondary/45 p-3 space-y-1.5">
                           <div className="text-[11px] text-muted-foreground">{m.label}</div>
                           <div className="font-mono text-base font-bold tabular-nums">{m.val}%</div>
                           <Progress value={m.val} className="h-1" />
@@ -2743,7 +2947,7 @@ function AuthenticatedStudioWorkspace({
                       ))}
                     </div>
 
-                    <div className="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-border p-3">
+                    <div className="flex flex-wrap items-center justify-between gap-2 rounded-[12px] border border-border p-3">
                       <div className="text-xs text-muted-foreground">
                         {tr(
                           'Hum a melody in your head to map it into the current fretboard position.',
@@ -2753,7 +2957,7 @@ function AuthenticatedStudioWorkspace({
                       <Button
                         type="button"
                         size="sm"
-                        variant={isCapturingHum ? 'destructive' : 'outline'}
+                        variant={isCapturingHum ? 'destructive' : 'signal'}
                         onClick={async () => {
                           if (!isAudioRunning) await handleToggleAudio();
                           if (!isCapturingHum) {
@@ -2771,7 +2975,7 @@ function AuthenticatedStudioWorkspace({
                     </div>
                   </Surface>
                 ) : (
-                  <Surface variant="default" className="rounded-xl border border-border p-5">
+                  <Surface variant="default" className="rounded-[16px] border border-border bg-card p-5">
                     <div className="flex flex-wrap items-center justify-between gap-3">
                       <div className="flex flex-wrap items-center gap-2">
                         <Button
@@ -2822,235 +3026,309 @@ function AuthenticatedStudioWorkspace({
           </AnimatePresence>
         </main>
 
-        {/* ==================== 3. RIGHT PANEL (Course Progress + Lesson Tasks + Bottom Guide) ==================== */}
-        <aside className="flex flex-col border-t lg:border-t-0 lg:border-l border-border bg-card/60 px-5 py-5 gap-4">
-          {/* COURSE PROGRESS */}
-          <div className="rounded-2xl border border-border bg-card p-4 flex items-center justify-between">
-            <div>
-              <div className="text-[10px] font-semibold tracking-wider text-muted-foreground uppercase">
-                COURSE PROGRESS
+        {/* ==================== 3. DOCK-CLEARING FLOATING PRACTICE & MIXER SHEET ==================== */}
+        {practiceDeckOpen && (
+          <div
+            role="region"
+            aria-label={tr('Practice Controls & Backing Mixer', '연습 컨트롤 및 반주 믹서')}
+            className="fixed inset-x-0 bottom-[80px] z-30 mx-auto w-[min(920px,calc(100vw-32px))] rounded-[18px] border border-border bg-popover/95 backdrop-blur-md p-4 shadow-[0_24px_64px_rgba(11,14,16,0.22)] nr-float-up space-y-3.5"
+          >
+            <div className="flex flex-wrap items-center justify-between gap-3 border-b border-border pb-3">
+              <div className="flex items-center gap-3 min-w-0">
+                <MasteryRingSvg progress={moduleProgressPct} size={36} label={`${moduleProgressPct}%`} />
+                <div className="min-w-0">
+                  <div className="nr-whisper">
+                    {tr(`MODULE ${modInfo?.number} PROGRESS`, `모듈 ${modInfo?.number} 진도`)}
+                  </div>
+                  <div className="text-xs font-semibold tabular-nums truncate">
+                    {tr(
+                      `${completedInModule} / ${moduleLessons.length} lessons completed`,
+                      `${completedInModule} / ${moduleLessons.length} 레슨 완료`
+                    )}
+                  </div>
+                </div>
               </div>
-              <div className="mt-1 text-sm font-semibold text-foreground tabular-nums">
-                {tr(
-                  `${completedInModule} / ${moduleLessons.length} lessons completed`,
-                  `${completedInModule} / ${moduleLessons.length} 레슨 완료`
-                )}
-              </div>
-            </div>
-            <MasteryRingSvg progress={moduleProgressPct} size={44} label={`${moduleProgressPct}%`} />
-          </div>
 
-          {/* LESSON TASKS (Interactive Checklist Driving Practice Modes) */}
-          <div className="rounded-2xl border border-border bg-card p-4 space-y-3">
-            <div className="text-[10px] font-semibold tracking-wider text-muted-foreground uppercase">
-              LESSON TASKS
-            </div>
-
-            <div className="space-y-2">
-              {lessonTasks.map((task) => {
-                const isActive = practiceMode === task.mode;
-                const isDone = completedTasks.has(task.mode);
-
-                return (
-                  <button
-                    key={task.mode}
-                    type="button"
-                    onClick={() => handlePracticeModeChange(task.mode)}
-                    className={`w-full flex items-center gap-3 rounded-xl px-2.5 py-2 text-left transition-colors ${
-                      isActive ? 'bg-secondary/90' : 'hover:bg-secondary/50'
-                    }`}
-                  >
-                    <span
-                      className={`flex h-7 w-7 shrink-0 items-center justify-center rounded-full border transition-colors ${
-                        isDone
-                          ? 'bg-primary border-primary text-primary-foreground'
-                          : isActive
-                          ? 'border-primary bg-accent-soft text-primary'
-                          : 'border-border bg-background text-muted-foreground'
-                      }`}
-                    >
-                      {isDone ? (
-                        <Check className="w-3.5 h-3.5 stroke-[2.5]" />
-                      ) : isActive ? (
-                        <span className="h-2 w-2 rounded-full bg-primary" />
-                      ) : (
-                        <Circle className="w-3.5 h-3.5 opacity-0" />
-                      )}
-                    </span>
-
-                    <div className="min-w-0">
-                      <div
-                        className={`text-xs font-semibold truncate ${
-                          isActive ? 'text-foreground' : 'text-foreground/85'
-                        }`}
-                      >
-                        {task.label}
-                      </div>
-                    </div>
-                  </button>
-                );
-              })}
-            </div>
-
-            {lesson.skipExam && nextLesson && (
-              <div className="pt-2.5 border-t border-border space-y-2">
-                <p className="text-[11px] leading-relaxed text-muted-foreground">
-                  {tr(
-                    'Warm-up lesson · Move on anytime without an exam',
-                    '입문 워밍업 레슨 · 테스트 없이 언제든 다음 단계로 넘어갈 수 있어요'
-                  )}
-                </p>
+              <div className="flex items-center gap-1.5 shrink-0">
                 <Button
                   type="button"
-                  size="sm"
-                  variant={
-                    completedTasks.has('loop') ||
-                    completedTasks.has('wait') ||
-                    Boolean(progress.lessonRecords[lesson.id]?.completed)
-                      ? 'default'
-                      : 'secondary'
-                  }
-                  onClick={handleAdvanceToNextLesson}
-                  className="w-full justify-between text-xs"
-                >
-                  <span>
-                    {tr(
-                      `Continue to Lesson ${nextLesson.code}`,
-                      `다음 레슨으로 넘어가기 (${nextLesson.code})`
-                    )}
-                  </span>
-                  <ChevronRight className="w-3.5 h-3.5" />
-                </Button>
-              </div>
-            )}
-
-            {/* Judgment Precision Selector appears cleanly ONLY when Exam is selected */}
-            {practiceMode === 'exam' && (
-              <div className="pt-2 border-t border-border space-y-1.5">
-                <div className="text-[11px] font-medium text-muted-foreground">
-                  {tr('Judgment Tier', '판정 기준')}
-                </div>
-                <Select
-                  value={judgmentTier}
-                  onValueChange={(v) => {
-                    if (v) setJudgmentTier(v as JudgmentTier);
+                  size="xs"
+                  variant="keycap"
+                  onClick={() => {
+                    setGuideSection('harmony');
+                    setGuideDialogOpen(true);
                   }}
                 >
-                  <SelectTrigger className="h-8 text-xs">
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="relaxed">{tr('Relaxed (Starter)', '느슨함 (입문)')}</SelectItem>
-                    <SelectItem value="standard">{tr('Standard (Unlock Next)', '표준 (다음 단계 해금)')}</SelectItem>
-                    <SelectItem value="tight">{tr('Tight (Pocket)', '엄격함 (칼박)')}</SelectItem>
-                    <SelectItem value="studio">{tr('Studio (Blind)', '완벽함 (블라인드)')}</SelectItem>
-                  </SelectContent>
-                </Select>
+                  <Layers className="size-3 text-primary" />
+                  <span>{tr('Harmony', '화성 포인트')}</span>
+                </Button>
+                <Button
+                  type="button"
+                  size="xs"
+                  variant="keycap"
+                  onClick={() => {
+                    setGuideSection('posture');
+                    setGuideDialogOpen(true);
+                  }}
+                >
+                  <BookOpen className="size-3 text-primary" />
+                  <span>{tr('Posture', '자세 · 교정')}</span>
+                </Button>
+                <Button
+                  type="button"
+                  size="icon-xs"
+                  variant="ghost"
+                  onClick={() => setPracticeDeckOpen(false)}
+                  aria-label={tr('Close controls', '닫기')}
+                >
+                  <X className="size-3.5" />
+                </Button>
+              </div>
+            </div>
 
-                <div className="pt-1.5 space-y-1.5">
-                  <div className="text-[11px] font-medium text-muted-foreground">
-                    {tr('Count-In', '예비박 카운트인')}
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4 items-center">
+              {/* Backing Track & Tempo Ramp Controls */}
+              <div className="space-y-2">
+                <div className="flex items-center gap-1.5">
+                  <span className="nr-whisper">{tr('BACKING & LOOP MIXER', '반주 · 루프 믹서')}</span>
+                  <HelpHint
+                    content={tr(
+                      'Toggle guide guitar, drums/bass, chords, metronome, and automatic +5 BPM speed-up.',
+                      '가이드 기타, 드럼·베이스, 코드 반주, 메트로놈과 +5 BPM 자동 가속을 켜고 끕니다.'
+                    )}
+                    side="top"
+                  />
+                </div>
+                <div className="flex flex-wrap items-center gap-1.5">
+                  <Button
+                    type="button"
+                    size="xs"
+                    variant={enableGuideGuitar ? 'default' : 'outline'}
+                    onClick={() => setEnableGuideGuitar((v) => !v)}
+                  >
+                    {enableGuideGuitar ? <Volume2 className="size-3 mr-1" /> : <VolumeX className="size-3 mr-1" />}
+                    {tr('Guide', '가이드')}
+                  </Button>
+                  <Button
+                    type="button"
+                    size="xs"
+                    variant={enableDrumsAndBass ? 'default' : 'outline'}
+                    onClick={() => setEnableDrumsAndBass((v) => !v)}
+                  >
+                    {tr('Drums/Bass', '드럼·베이스')}
+                  </Button>
+                  <Button
+                    type="button"
+                    size="xs"
+                    variant={enableBackingChords ? 'default' : 'outline'}
+                    onClick={() => setEnableBackingChords((v) => !v)}
+                  >
+                    {tr('Chords', '코드 반주')}
+                  </Button>
+                  <Button
+                    type="button"
+                    size="xs"
+                    variant={enableMetronome ? 'default' : 'outline'}
+                    onClick={() => setEnableMetronome((v) => !v)}
+                  >
+                    {tr('Click', '메트로놈')}
+                  </Button>
+                  <div className="inline-flex items-center gap-1.5 rounded-[8px] border border-border bg-secondary/50 px-2 py-1 text-[11px]">
+                    <span className="font-mono">+5 BPM</span>
+                    <Switch checked={autoSpeedUp} onCheckedChange={setAutoSpeedUp} />
                   </div>
+                </div>
+              </div>
+
+              {/* Exam Judgment & Count-in Controls */}
+              <div className="space-y-2">
+                <div className="flex items-center gap-1.5">
+                  <span className="nr-whisper">{tr('EXAM JUDGMENT & COUNT-IN', '시험 판정 · 예비박')}</span>
+                  <HelpHint
+                    content={tr(
+                      'Select pitch/timing strictness (Studio hides fretboard hints), count-in length, and guitar auto-start.',
+                      '음정·박자 판정 엄격도(완벽함은 블라인드), 예비박 길이, 기타 입력 시 자동 시작을 설정합니다.'
+                    )}
+                    side="top"
+                  />
+                </div>
+                <div className="flex flex-wrap items-center gap-2">
+                  <Select
+                    value={judgmentTier}
+                    onValueChange={(v) => {
+                      if (v) setJudgmentTier(v as JudgmentTier);
+                    }}
+                  >
+                    <SelectTrigger size="sm" className="w-[156px]">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="relaxed">{tr('Relaxed (Starter)', '느슨함 (입문)')}</SelectItem>
+                      <SelectItem value="standard">{tr('Standard (Unlock)', '표준 (해금)')}</SelectItem>
+                      <SelectItem value="tight">{tr('Tight (Pocket)', '엄격함 (칼박)')}</SelectItem>
+                      <SelectItem value="studio">{tr('Studio (Blind)', '완벽함 (블라인드)')}</SelectItem>
+                    </SelectContent>
+                  </Select>
+
                   <Select
                     value={String(examCountInBars)}
                     onValueChange={(v) => {
                       if (v !== null) setExamCountInBars(Number(v));
                     }}
                   >
-                    <SelectTrigger className="h-8 text-xs">
+                    <SelectTrigger size="sm" className="w-[136px]">
                       <SelectValue />
                     </SelectTrigger>
                     <SelectContent>
-                      <SelectItem value="1">{tr('1 Bar (4 Beats · Recommended)', '1마디 (4박 · 추천)')}</SelectItem>
-                      <SelectItem value="2">{tr('2 Bars (8 Beats · Relaxed)', '2마디 (8박 · 여유)')}</SelectItem>
-                      <SelectItem value="0">{tr('None (Immediate)', '없음 (바로 시작)')}</SelectItem>
+                      <SelectItem value="1">{tr('1 Bar Count-In', '1마디 예비박')}</SelectItem>
+                      <SelectItem value="2">{tr('2 Bars Count-In', '2마디 예비박')}</SelectItem>
+                      <SelectItem value="0">{tr('No Count-In', '예비박 없음')}</SelectItem>
                     </SelectContent>
                   </Select>
-                </div>
 
-                <div className="pt-1.5 flex items-center justify-between gap-2">
-                  <span className="text-[11px] font-medium text-foreground/90">
-                    {tr('Auto-Start on Guitar', '기타 입력 시 자동 시작')}
-                  </span>
-                  <Switch checked={examAutoStart} onCheckedChange={setExamAutoStart} />
-                </div>
-
-                {examAutoStart && !isAudioRunning && (
-                  <div className="flex items-center justify-between gap-2 rounded-lg bg-muted/60 px-2.5 py-1.5 text-[11px] text-muted-foreground">
-                    <span>{tr('Connect guitar for auto-start', '자동 시작하려면 기타를 연결하세요')}</span>
-                    <button
-                      type="button"
-                      onClick={() => void handleToggleAudio()}
-                      className="font-semibold text-primary hover:underline shrink-0"
-                    >
-                      {tr('Connect', '연결')}
-                    </button>
+                  <div className="inline-flex items-center gap-1.5 rounded-[8px] border border-border bg-secondary/50 px-2 py-1 text-[11px]">
+                    <span>{tr('Auto-Start', '자동 시작')}</span>
+                    <Switch checked={examAutoStart} onCheckedChange={setExamAutoStart} />
                   </div>
-                )}
+                </div>
               </div>
-            )}
-          </div>
-
-          {/* CURRENT FOCUS (One Concise Sentence) */}
-          <div className="rounded-2xl border border-border bg-card p-4 space-y-2">
-            <div className="flex items-center justify-between">
-              <span className="text-[10px] font-semibold tracking-wider text-muted-foreground uppercase">
-                {tr('CURRENT FOCUS', '지금 할 일')}
-              </span>
-              {feedbackBanner && (
-                <Badge
-                  variant={feedbackBanner.result === 'miss' ? 'outline' : 'default'}
-                  className="text-[10px]"
-                >
-                  {feedbackBanner.title}
-                </Badge>
-              )}
             </div>
-            <p className="text-xs leading-relaxed text-foreground/90">
-              {currentFocusSentence}
-            </p>
           </div>
+        )}
 
-          {/* BOTTOM RIGHT: Lesson Guide Entry Card */}
-          <div className="mt-auto rounded-2xl border border-border bg-card p-4 space-y-2">
-            <div className="text-[10px] font-semibold tracking-wider text-muted-foreground uppercase mb-1">
-              LESSON GUIDE
-            </div>
-
-            <button
-              type="button"
-              onClick={() => {
-                setGuideSection('harmony');
-                setGuideDialogOpen(true);
-              }}
-              className="w-full flex items-center justify-between rounded-xl border border-border/80 bg-background/60 hover:bg-secondary/70 px-3 py-2.5 text-left transition-colors"
-            >
-              <span className="inline-flex items-center gap-2.5 text-xs font-semibold text-foreground">
-                <Layers className="w-4 h-4 text-primary" />
-                {tr('Harmony Point', '화성 포인트')}
-              </span>
-              <ChevronRight className="w-4 h-4 text-muted-foreground" />
-            </button>
-
-            <button
-              type="button"
-              onClick={() => {
-                setGuideSection('posture');
-                setGuideDialogOpen(true);
-              }}
-              className="w-full flex items-center justify-between rounded-xl border border-border/80 bg-background/60 hover:bg-secondary/70 px-3 py-2.5 text-left transition-colors"
-            >
-              <span className="inline-flex items-center gap-2.5 text-xs font-semibold text-foreground">
-                <BookOpen className="w-4 h-4 text-primary" />
-                {tr('Posture & Fix', '자세 · 교정')}
-              </span>
-              <ChevronRight className="w-4 h-4 text-muted-foreground" />
-            </button>
-          </div>
-        </aside>
+        {/* ==================== 4. LIQUID GLASS FLOATING DOCK ==================== */}
+        <StudioLiquidDock
+          isAudioRunning={isAudioRunning}
+          onToggleAudio={handleToggleAudio}
+          livePitch={livePitch}
+          audioTelemetry={audioTelemetry}
+          deckOpen={practiceDeckOpen}
+          onToggleDeck={() => setPracticeDeckOpen((v) => !v)}
+          isPlaying={isPlaying}
+          isGuestMode={isGuestMode}
+          isAdmin={isAdmin}
+          user={
+            user
+              ? {
+                  email: user.email,
+                  name:
+                    (user.user_metadata?.full_name as string | undefined) ??
+                    (user.user_metadata?.name as string | undefined),
+                  avatarUrl:
+                    (user.user_metadata?.avatar_url as string | undefined) ??
+                    (user.user_metadata?.picture as string | undefined),
+                }
+              : {
+                  email: tr('Guest Preview (1-1 · 3-1 · 4-1)', '무료 체험 중 (1-1 · 3-1 · 4-1)'),
+                  name: tr('Guest Mode', '체험 모드'),
+                }
+          }
+          syncStatus={syncStatus}
+          onSignOut={() => (isGuestMode ? onGuestSignIn(lesson.id) : void onSignOut())}
+          themePreference={themePreference}
+          onThemeChange={setThemePreference}
+          freeExploreMode={progress.freeExploreMode}
+          onToggleFreeExplore={(enabled) =>
+            setProgress((prev) => ({ ...prev, freeExploreMode: enabled }))
+          }
+          errorLogCount={errorLogs.length}
+          onOpenCurriculum={() => setCurriculumOpen(true)}
+          onOpenTuner={() => setTunerOpen(true)}
+          onOpenGuide={() => {
+            setGuideSection('both');
+            setGuideDialogOpen(true);
+          }}
+          onOpenAnalytics={() => setAnalyticsOpen(true)}
+          onOpenAudioSetup={() => setAudioSetupOpen(true)}
+          onOpenStageHud={() => setStageHudOpen(true)}
+          onOpenCommandPalette={() => setCommandPaletteOpen(true)}
+          onOpenTour={() => setOnboardingOpen(true)}
+          onOpenErrorModal={() => setErrorModalOpen(true)}
+          onOpenBugReport={() =>
+            openBugReport({ lessonId: lesson.id, diagnostics: errorLogs })
+          }
+        />
       </div>
 
-      {/* ==================== DIALOGS ==================== */}
+      {/* ==================== DIALOGS & OVERLAYS ==================== */}
+      <CurriculumBrowserDialog
+        open={curriculumOpen}
+        onOpenChange={setCurriculumOpen}
+        selectedLessonId={lesson.id}
+        onSelectLesson={handleSelectLesson}
+        progress={progress}
+        onToggleFreeExplore={(enabled) =>
+          setProgress((prev) => ({ ...prev, freeExploreMode: enabled }))
+        }
+        isGuestMode={isGuestMode}
+      />
+
+      <CommandPaletteDialog
+        open={commandPaletteOpen}
+        onOpenChange={setCommandPaletteOpen}
+        selectedLessonId={lesson.id}
+        progress={progress}
+        isGuestMode={isGuestMode}
+        isAudioRunning={isAudioRunning}
+        resolvedTheme={resolvedTheme}
+        availableModes={lessonTasks.map((t) => ({ mode: t.mode, label: t.label }))}
+        onSelectLesson={handleSelectLesson}
+        onSelectMode={handlePracticeModeChange}
+        onToggleAudio={() => void handleToggleAudio()}
+        onOpenCurriculum={() => setCurriculumOpen(true)}
+        onOpenTuner={() => setTunerOpen(true)}
+        onOpenGuide={() => {
+          setGuideSection('both');
+          setGuideDialogOpen(true);
+        }}
+        onOpenAudioSetup={() => setAudioSetupOpen(true)}
+        onOpenAnalytics={() => setAnalyticsOpen(true)}
+        onOpenStageHud={() => setStageHudOpen(true)}
+        onOpenTour={() => setOnboardingOpen(true)}
+        onToggleTheme={() => setThemePreference(resolvedTheme === 'dark' ? 'light' : 'dark')}
+        onToggleLocale={() => setLocalePref(locale === 'ko' ? 'en' : 'ko')}
+      />
+
+      <StageFocusHudModal
+        open={stageHudOpen}
+        onOpenChange={setStageHudOpen}
+        lesson={lesson}
+        currentChordBar={currentChordBar}
+        keyCenterRootPc={keyCenterRootPc}
+        activeNoteIndex={activeNoteIndex}
+        labelMode={labelMode}
+        onLabelModeChange={setLabelMode}
+        practiceMode={practiceMode}
+        judgmentTier={judgmentTier}
+        livePitch={livePitch}
+        isAudioRunning={isAudioRunning}
+        onToggleAudio={() => void handleToggleAudio()}
+        earCopyUnlockedIndices={earCopyUnlockedIndices}
+        earCopyHintLevel={earCopyHintLevel}
+        hummedMappings={hummedMappings}
+        onFretClick={handleFretClick}
+        isPlaying={isPlaying}
+        onTogglePlay={toggleTransport}
+        onReset={resetSessionState}
+        currentBeat={currentBeat}
+        totalBeats={totalBeats}
+        bpm={bpm}
+        onBpmChange={setBpm}
+        ampPreset={ampPreset}
+        onAmpPresetChange={setAmpPreset}
+        countInState={countInState}
+        autoStartArmed={isExamAutoStartArmed}
+        autoStartImmediate={examCountInBars === 0}
+        tuningProfile={audioConfig.tuningProfile ?? 'standard'}
+        capoFret={audioConfig.capoFret ?? 0}
+        enableMetronome={enableMetronome}
+        onToggleMetronome={() => setEnableMetronome((v) => !v)}
+        onOpenTuner={() => setTunerOpen(true)}
+        onPrevLesson={prevLesson ? () => handleSelectLesson(prevLesson) : undefined}
+        onNextLesson={nextLesson ? () => handleSelectLesson(nextLesson) : undefined}
+        currentFocusSentence={currentFocusSentence}
+      />
+
       <StudioOnboardingDialog
         open={onboardingOpen}
         onOpenChange={setOnboardingOpen}

@@ -238,10 +238,10 @@ export function LiveCoachingShowcase({
           transition={{ duration: 0.24, ease: SILK_EASE }}
           className="grid grid-cols-1 lg:grid-cols-[1.05fr_0.95fr] gap-6 items-center"
         >
-          {/* Left: 6-String Live Monitor Visual */}
-          <div className="rounded-xl border border-border bg-background p-4 sm:p-5 space-y-3">
-            <div className="flex items-center justify-between gap-2 pb-2 border-b border-border/70">
-              <div className="inline-flex items-center gap-1.5 text-xs font-medium text-muted-foreground">
+          {/* Left: 6-String Live Monitor Visual (Recessed OLED Pod) */}
+          <div className="nr-obsidian-pod rounded-[16px] border border-oled-border p-4 sm:p-5 text-oled-foreground space-y-3">
+            <div className="flex items-center justify-between gap-2 pb-2 border-b border-oled-border">
+              <div className="inline-flex items-center gap-1.5 text-xs font-medium text-oled-muted">
                 <Mic className="w-3.5 h-3.5 text-primary" />
                 <span>
                   {locale === 'en' ? 'Live Guitar Listening View' : '실시간 기타 소리 인식 화면'}
@@ -258,24 +258,24 @@ export function LiveCoachingShowcase({
               {active.strings.map((st) => {
                 const cardStyle =
                   st.status === 'ringing'
-                    ? 'border-success/40 bg-success/10 text-foreground'
+                    ? 'border-emerald-500/45 bg-emerald-500/12 text-oled-foreground'
                     : st.status === 'bleed'
-                      ? 'border-warning/50 bg-warning/10 text-foreground'
-                      : 'border-border/70 bg-card/70 text-muted-foreground';
+                      ? 'border-amber-500/50 bg-amber-500/14 text-oled-foreground'
+                      : 'border-oled-border bg-oled-elevated text-oled-muted';
                 return (
                   <div
                     key={st.name}
-                    className={`rounded-xl border px-3 py-2.5 flex items-center justify-between gap-2 ${cardStyle}`}
+                    className={`rounded-[10px] border px-3 py-2.5 flex items-center justify-between gap-2 ${cardStyle}`}
                   >
                     <div className="flex items-center gap-2 min-w-0">
                       <span className="font-mono text-xs font-bold shrink-0">{st.name}</span>
                       <span className="text-[11px] truncate">{st.noteLabel}</span>
                     </div>
                     {st.status === 'ringing' && (
-                      <CheckCircle2 className="w-3.5 h-3.5 text-success shrink-0" />
+                      <CheckCircle2 className="w-3.5 h-3.5 text-emerald-400 shrink-0" />
                     )}
                     {st.status === 'bleed' && (
-                      <AlertCircle className="w-3.5 h-3.5 text-warning shrink-0" />
+                      <AlertCircle className="w-3.5 h-3.5 text-amber-400 shrink-0" />
                     )}
                   </div>
                 );

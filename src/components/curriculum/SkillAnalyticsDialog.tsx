@@ -4,6 +4,7 @@ import React, { useMemo } from 'react';
 import {
   Dialog,
   DialogContent,
+  DialogDescription,
   DialogHeader,
   DialogTitle,
 } from '@/components/ui/dialog';
@@ -64,9 +65,15 @@ export function SkillAnalyticsDialog({
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="sm:max-w-2xl max-h-[86vh] overflow-y-auto">
         <DialogHeader>
-          <DialogTitle className="text-base font-semibold">
+          <DialogTitle className="text-base">
             {tr('Practice History & Weak-Bar Drills', '내 연습 기록 · 약점 마디 드릴')}
           </DialogTitle>
+          <DialogDescription className="sr-only">
+            {tr(
+              'View radar skill breakdown, daily practice progress, and recommended weak-bar drills.',
+              '5대 역량 레이더, 일일 목표 달성률, 추천 약점 마디 드릴을 확인합니다.'
+            )}
+          </DialogDescription>
         </DialogHeader>
 
         {/* Top Summary Row: Radar + Daily Goal + Overall Completion */}

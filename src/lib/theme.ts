@@ -34,12 +34,27 @@ function computeResolvedTheme(pref: ThemePreference): 'light' | 'dark' {
   return 'light';
 }
 
+let themeSwitchTimer: number | null = null;
+
 function applyDomTheme(pref: ThemePreference) {
   if (typeof document === 'undefined') return;
   const isDark = computeResolvedTheme(pref) === 'dark';
   const root = document.documentElement;
+  root.setAttribute('data-theme-switching', '1');
   root.classList.toggle('dark', isDark);
   root.setAttribute('data-theme', isDark ? 'dark' : 'light');
+  void root.offsetWidth;
+  if (typeof window !== 'undefined') {
+    if (themeSwitchTimer !== null) {
+      window.cancelAnimationFrame(themeSwitchTimer);
+    }
+    themeSwitchTimer = window.requestAnimationFrame(() => {
+      root.removeAttribute('data-theme-switching');
+      themeSwitchTimer = null;
+    });
+  } else {
+    root.removeAttribute('data-theme-switching');
+  }
 }
 
 function subscribeTheme(callback: () => void): () => void {

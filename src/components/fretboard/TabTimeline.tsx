@@ -2,6 +2,7 @@
 
 import React from 'react';
 import { Button } from '@/components/ui/button';
+import { HelpHint } from '@/components/ui/tooltip';
 import { DownPickIcon, UpPickIcon } from '@/components/icons/GuitarSvgIcons';
 import { getFingerColorHex } from '@/lib/musicTheory';
 import { useLocale } from '@/lib/i18n';
@@ -85,11 +86,21 @@ export function TabTimeline({
   };
 
   return (
-    <div className="rounded-xl border border-border bg-card p-3.5">
+    <div className="rounded-[16px] border border-border bg-card p-3.5 shadow-[0_14px_36px_rgba(11,14,16,0.06)] dark:shadow-none">
       {/* Measure Bar Header (Phase II+ shows Chords; Phase I shows simple Bar pills only when >1 bar) */}
       <div className="mb-2.5 flex items-center justify-between gap-2">
+        <div className="flex items-center gap-1.5 shrink-0 mr-1">
+          <span className="nr-whisper">TAB</span>
+          <HelpHint
+            content={tr(
+              'Click any bar header to loop that bar, or click a note on the TAB to preview its pitch.',
+              '마디 헤더를 클릭하면 해당 구간만 반복할 수 있고, 음표를 누르면 소리를 미리 들을 수 있습니다.'
+            )}
+            side="top"
+          />
+        </div>
         <div
-          className="grid flex-1 gap-1.5"
+          className="grid flex-1 gap-1.5 min-w-0"
           style={{ gridTemplateColumns: `repeat(${totalBars}, minmax(0, 1fr))` }}
         >
           {barIndices.map((bIdx) => {
@@ -102,19 +113,19 @@ export function TabTimeline({
                 key={bIdx}
                 type="button"
                 onClick={() => toggleBarLoop(bIdx)}
-                className={`flex items-center justify-between rounded-md border px-2.5 py-1 text-left text-xs transition-colors ${
+                className={`min-w-0 overflow-hidden flex items-center justify-between gap-1 rounded-[8px] border px-2.5 py-1 text-left text-xs transition-colors ${
                   isCurrentBar
-                    ? 'border-primary bg-accent-soft/70 text-foreground font-semibold'
+                    ? 'border-primary bg-accent-soft/75 text-foreground font-semibold'
                     : isInLoop
                     ? 'border-border bg-secondary/50 text-foreground hover:bg-secondary'
-                    : 'border-border/60 bg-background text-muted-foreground opacity-50'
+                    : 'border-border/60 bg-background/50 text-muted-foreground opacity-50'
                 }`}
               >
-                <span className="font-mono text-[11px] text-muted-foreground">
+                <span className="font-mono text-[11px] tabular-nums text-muted-foreground truncate">
                   {tr(`Bar ${bIdx + 1}`, `${bIdx + 1}마디`)}
                 </span>
                 {!isPhase1 && chord && (
-                  <span className="font-mono text-xs font-semibold text-foreground">
+                  <span className="font-mono text-xs font-semibold text-foreground shrink-0">
                     {chord.chordName}
                   </span>
                 )}
@@ -127,7 +138,7 @@ export function TabTimeline({
           <Button
             type="button"
             size="xs"
-            variant="ghost"
+            variant="keycap"
             onClick={() => onLoopRangeChange([0, totalBars - 1])}
           >
             <Repeat className="w-3 h-3 mr-1" />
@@ -137,7 +148,7 @@ export function TabTimeline({
       </div>
 
       {/* 6-Line Clean Tablature */}
-      <div className="relative overflow-x-auto rounded-lg border border-border/80 bg-muted/40 px-3 py-3">
+      <div className="relative overflow-x-auto rounded-[12px] border border-border/80 bg-secondary/45 px-3 py-3">
         <div className="relative min-w-[600px]">
           {(isPlaying || currentBeat > 0) && (
             <div
@@ -204,7 +215,7 @@ export function TabTimeline({
                           type="button"
                           onClick={() => onSelectNote(idx)}
                           style={{ left: `${leftPct}%` }}
-                          className={`absolute -translate-x-1/2 -translate-y-1/2 rounded px-1.5 py-0.5 font-mono text-[11px] font-semibold tabular-nums border transition-transform duration-150 ${
+                          className={`no-press-scale absolute -translate-x-1/2 -translate-y-1/2 rounded-[6px] px-1.5 py-0.5 font-mono text-[11px] font-semibold tabular-nums border transition-transform duration-150 ${
                             isActive
                               ? 'z-20 scale-110 bg-primary text-primary-foreground border-primary'
                               : ev
@@ -235,7 +246,7 @@ export function TabTimeline({
                         type="button"
                         onClick={() => onSelectNote(idx)}
                         style={{ left: `${leftPct}%` }}
-                        className={`absolute -translate-x-1/2 -translate-y-1/2 rounded px-1.5 py-0.5 font-mono text-[11px] font-semibold tabular-nums border transition-transform duration-150 ${
+                        className={`no-press-scale absolute -translate-x-1/2 -translate-y-1/2 rounded-[6px] px-1.5 py-0.5 font-mono text-[11px] font-semibold tabular-nums border transition-transform duration-150 ${
                           isActive
                             ? 'z-20 scale-110 bg-primary text-primary-foreground border-primary'
                             : ev

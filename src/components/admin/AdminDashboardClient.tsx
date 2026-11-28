@@ -4,6 +4,7 @@ import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
 import { BrandFretLogo } from '@/components/icons/GuitarSvgIcons';
 import { Button } from '@/components/ui/button';
+import { Hint } from '@/components/ui/tooltip';
 import { ALL_LESSONS, localizeLesson } from '@/data/curriculumData';
 import { useAuth } from '@/lib/auth';
 import type { BugReportRecord, BugReportStatus } from '@/lib/bugReport';
@@ -508,19 +509,19 @@ export function AdminDashboardClient() {
               ).map((opt) => {
                 const Icon = opt.icon;
                 return (
-                  <button
-                    key={opt.id}
-                    type="button"
-                    onClick={() => setThemePreference(opt.id)}
-                    className={`rounded-md px-2 py-1 text-[11px] transition-colors ${
-                      themePreference === opt.id
-                        ? 'bg-secondary text-foreground'
-                        : 'text-muted-foreground hover:text-foreground'
-                    }`}
-                    title={opt.label}
-                  >
-                    <Icon className="w-3.5 h-3.5" />
-                  </button>
+                  <Hint key={opt.id} content={opt.label} side="bottom">
+                    <button
+                      type="button"
+                      onClick={() => setThemePreference(opt.id)}
+                      className={`rounded-md px-2 py-1 text-[11px] transition-colors ${
+                        themePreference === opt.id
+                          ? 'bg-secondary text-foreground'
+                          : 'text-muted-foreground hover:text-foreground'
+                      }`}
+                    >
+                      <Icon className="w-3.5 h-3.5" />
+                    </button>
+                  </Hint>
                 );
               })}
             </div>

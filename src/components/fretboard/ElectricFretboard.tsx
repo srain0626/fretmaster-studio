@@ -3,6 +3,7 @@
 import React, { useMemo, useState } from 'react';
 import { motion } from 'framer-motion';
 import { Button } from '@/components/ui/button';
+import { HelpHint, Hint } from '@/components/ui/tooltip';
 import { Slider } from '@/components/ui/slider';
 import {
   Select,
@@ -269,11 +270,14 @@ export function ElectricFretboard({
   const progressPct = Math.max(0, Math.min(100, (currentBeat / Math.max(1, totalBeats)) * 100));
 
   return (
-    <div className="rounded-2xl border border-border bg-card shadow-[0_1px_3px_rgba(15,23,42,0.04)] overflow-hidden">
-      {/* Context-Aware Top Strip */}
-      <div className="flex flex-wrap items-center justify-between gap-2 px-4 pt-3 pb-1">
-        {/* Muted 4-Finger Legend */}
-        <div className="flex flex-wrap items-center gap-3 text-[11px] text-muted-foreground">
+    <div
+      data-tour="fretboard-stage"
+      className="nr-obsidian-stage rounded-[24px] border border-oled-border text-oled-foreground overflow-hidden"
+    >
+      {/* Context-Aware OLED Top Telemetry Strip */}
+      <div className="flex flex-wrap items-center justify-between gap-2 border-b border-oled-border px-4 py-2.5">
+        {/* Muted 4-Finger Legend + HelpHint */}
+        <div className="flex flex-wrap items-center gap-3 text-[11px] text-oled-muted">
           <span className="inline-flex items-center gap-1.5">
             <span className="h-2.5 w-2.5 rounded-full bg-[#5B7C99]" /> {tr('1 Index', '1 검지')}
           </span>
@@ -286,25 +290,32 @@ export function ElectricFretboard({
           <span className="inline-flex items-center gap-1.5">
             <span className="h-2.5 w-2.5 rounded-full bg-[#B56357]" /> {tr('4 Pinky', '4 소지')}
           </span>
+          <HelpHint
+            content={tr(
+              'Colors map directly to your fretting hand fingers (1 Index to 4 Pinky). Click any fret or press keys 1–4 to play without a guitar.',
+              '4가지 색상은 왼손 손가락(1 검지~4 소지)을 뜻합니다. 기타가 없을 땐 프렛을 직접 클릭하거나 숫자키 1~4를 눌러 연주하세요.'
+            )}
+            side="bottom"
+          />
         </div>
 
         {/* Live Pitch Resolution Readout */}
         {livePitch.isActive && liveFretResolution && (
           <div
-            className={`inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full border text-[11px] font-mono tabular-nums ${
+            className={`inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full border text-[11px] font-mono tabular-nums ${
               liveFretResolution.matchedTarget
-                ? 'border-emerald-500/40 bg-emerald-500/10 text-emerald-600 dark:text-emerald-400'
-                : 'border-border bg-muted/70 text-foreground'
+                ? 'border-emerald-500/45 bg-emerald-500/15 text-emerald-300'
+                : 'border-oled-border bg-oled-elevated text-oled-foreground'
             }`}
           >
             <span className="font-semibold">{livePitch.noteName}</span>
-            <span className="text-muted-foreground">
+            <span className="text-oled-muted">
               {tr(
                 `S${liveFretResolution.primary.string} ${liveFretResolution.primary.fret}F`,
                 `${liveFretResolution.primary.string}번줄 ${liveFretResolution.primary.fret}F`
               )}
             </span>
-            <span className="text-muted-foreground">
+            <span className="text-oled-muted">
               {livePitch.centsOff >= 0 ? `+${livePitch.centsOff}c` : `${livePitch.centsOff}c`}
             </span>
           </div>
@@ -312,7 +323,7 @@ export function ElectricFretboard({
 
         {/* Guitar Auto-Start Armed Indicator */}
         {autoStartArmed && !countInState && (
-          <div className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full border border-primary/35 bg-accent-soft text-[11px] font-medium text-primary">
+          <div className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full border border-primary/45 bg-primary/15 text-[11px] font-medium text-[#ff9c69]">
             <span className="h-1.5 w-1.5 rounded-full bg-primary animate-pulse" />
             <span>
               {autoStartImmediate
@@ -324,7 +335,7 @@ export function ElectricFretboard({
 
         {/* Phase II+ Label Switcher & Scale Toggle (Hidden in Phase I) */}
         {!isPhase1 && (
-          <div className="flex items-center gap-1.5">
+          <div className="flex items-center gap-1">
             {(
               [
                 { id: 'finger', label: tr('Finger', '손가락') },
@@ -336,8 +347,12 @@ export function ElectricFretboard({
                 key={item.id}
                 type="button"
                 size="xs"
-                variant={labelMode === item.id ? 'secondary' : 'ghost'}
-                className={labelMode === item.id ? 'font-semibold text-foreground' : 'text-muted-foreground'}
+                variant={labelMode === item.id ? 'signal' : 'oled'}
+                className={
+                  labelMode === item.id
+                    ? 'rounded-full text-[11px]'
+                    : 'rounded-full text-[11px] text-oled-muted hover:text-oled-foreground'
+                }
                 onClick={() => onLabelModeChange(item.id)}
               >
                 {item.label}
@@ -347,37 +362,50 @@ export function ElectricFretboard({
             <Button
               type="button"
               size="xs"
-              variant={showScaleBackdrop ? 'secondary' : 'ghost'}
-              className="text-xs"
+              variant={showScaleBackdrop ? 'oled' : 'ghost'}
+              className={`rounded-full text-[11px] ${
+                showScaleBackdrop
+                  ? 'border-white/25 text-oled-foreground'
+                  : 'text-oled-muted hover:bg-white/10 hover:text-oled-foreground'
+              }`}
               onClick={() => setShowScaleBackdrop((v) => !v)}
             >
               {tr('Scale', '스케일')}
             </Button>
 
             {isPhase3Or4 && (
-              <Button
-                type="button"
-                size="xs"
-                variant="ghost"
-                onClick={() => setZoomFocus((v) => !v)}
-                title={zoomFocus ? tr('Show all 22 frets', '22프렛 전체 보기') : tr('Zoom active range', '집중 구간 확대')}
+              <Hint
+                content={
+                  zoomFocus
+                    ? tr('Show all 22 frets', '22프렛 전체 보기')
+                    : tr('Zoom active range', '집중 구간 확대')
+                }
+                side="bottom"
               >
-                {zoomFocus ? <Maximize2 className="w-3.5 h-3.5" /> : <Minimize2 className="w-3.5 h-3.5" />}
-              </Button>
+                <Button
+                  type="button"
+                  size="icon-xs"
+                  variant="oled"
+                  className="rounded-full"
+                  onClick={() => setZoomFocus((v) => !v)}
+                >
+                  {zoomFocus ? <Maximize2 className="w-3.5 h-3.5" /> : <Minimize2 className="w-3.5 h-3.5" />}
+                </Button>
+              </Hint>
             )}
           </div>
         )}
       </div>
 
       {/* SVG Guitar Fretboard */}
-      <div className="relative px-3 py-1 overflow-x-auto">
+      <div className="relative px-3 py-2 overflow-x-auto">
         {countInState && countInState.remaining > 0 && (
-          <div className="pointer-events-none absolute inset-0 z-20 flex items-center justify-center bg-background/45 backdrop-blur-[2px]">
-            <div className="flex flex-col items-center gap-2 rounded-2xl border border-border bg-card/95 px-6 py-3.5 shadow-sm">
-              <span className="text-[11px] font-semibold tracking-wider text-muted-foreground uppercase">
+          <div className="pointer-events-none absolute inset-0 z-20 flex items-center justify-center bg-[#070a0d]/65 backdrop-blur-[2px]">
+            <div className="flex flex-col items-center gap-2 rounded-[16px] border border-oled-border bg-oled-elevated/95 px-6 py-3.5 shadow-lg">
+              <span className="font-mono text-[11px] font-semibold tracking-wider text-oled-muted uppercase">
                 {tr('Count-In · Get Ready', '예비박 · 준비하세요')}
               </span>
-              <span className="font-mono text-4xl font-bold tabular-nums text-foreground leading-none">
+              <span className="font-mono text-4xl font-bold tabular-nums text-oled-foreground leading-none">
                 {countInState.remaining}
               </span>
               <div className="flex items-center gap-1.5 pt-0.5">
@@ -385,7 +413,7 @@ export function ElectricFretboard({
                   <span
                     key={`ci-dot-${idx}`}
                     className={`h-1.5 w-3 rounded-full transition-colors ${
-                      idx < countInState.current ? 'bg-primary' : 'bg-border'
+                      idx < countInState.current ? 'bg-primary' : 'bg-white/20'
                     }`}
                   />
                 ))}
@@ -399,15 +427,15 @@ export function ElectricFretboard({
           role="img"
           aria-label={tr('Electric Guitar Fretboard', '일렉트릭 기타 지판')}
         >
-          {/* Matte Walnut Wood Surface (Non-neon) */}
+          {/* Matte Walnut Wood Surface */}
           <rect
             x={leftMargin}
             y={topY}
             width={usableWidth}
             height={boardHeight}
             rx={8}
-            fill="#2B2420"
-            stroke="var(--border)"
+            fill="#1D1815"
+            stroke="rgba(255,255,255,0.12)"
             strokeWidth="1"
           />
 
@@ -451,7 +479,7 @@ export function ElectricFretboard({
                   x={cx}
                   y={topY - 10}
                   textAnchor="middle"
-                  className="fill-muted-foreground text-[11px] font-mono tabular-nums"
+                  className="fill-oled-muted text-[11px] font-mono tabular-nums"
                 >
                   {fret === 0 ? 'OPEN' : fret}
                 </text>
@@ -474,7 +502,7 @@ export function ElectricFretboard({
                   x={16}
                   y={y + 4}
                   textAnchor="middle"
-                  className="fill-muted-foreground text-[11px] font-mono font-medium"
+                  className="fill-oled-muted text-[11px] font-mono font-medium"
                 >
                   {(() => {
                     if (tuningProfile === 'standard' && capoFret === 0) {
@@ -491,7 +519,7 @@ export function ElectricFretboard({
                   y1={y}
                   x2={leftMargin + usableWidth}
                   y2={y}
-                  stroke={isActiveString ? '#E85D3F' : str >= 4 ? '#C4B5A5' : '#E2E8F0'}
+                  stroke={isActiveString ? '#FF6B24' : str >= 4 ? '#C4B5A5' : '#E2E8F0'}
                   strokeWidth={isActiveString ? strokeW + 0.6 : strokeW}
                   strokeOpacity={isActiveString ? 0.95 : 0.7}
                   className={isActiveString ? 'animate-string-vibrate' : ''}
@@ -521,12 +549,12 @@ export function ElectricFretboard({
                     r={9}
                     fill={
                       isInChord
-                        ? 'rgba(232, 93, 63, 0.25)'
+                        ? 'rgba(255, 107, 36, 0.25)'
                         : sc.isRoot
                         ? 'rgba(255, 255, 255, 0.22)'
                         : 'rgba(255, 255, 255, 0.08)'
                     }
-                    stroke={isInChord ? '#E85D3F' : sc.isRoot ? '#FFFFFF' : 'rgba(255,255,255,0.28)'}
+                    stroke={isInChord ? '#FF6B24' : sc.isRoot ? '#FFFFFF' : 'rgba(255,255,255,0.28)'}
                     strokeWidth={sc.isRoot || isInChord ? '1.3' : '0.9'}
                   />
                   <text
@@ -668,7 +696,7 @@ export function ElectricFretboard({
                       cx={getColX(currentNote.fret)}
                       cy={getStringY(currentNote.string)}
                       fill="none"
-                      stroke="#E85D3F"
+                      stroke="#FF6B24"
                       strokeWidth="2"
                       initial={{ r: 13, opacity: 0.4 }}
                       animate={{ r: 16, opacity: 0.95 }}
@@ -754,49 +782,53 @@ export function ElectricFretboard({
 
       {/* Bend Pitch Thermometer (Only shown when active note requires a bend) */}
       {currentNote?.bendCents && (
-        <div className="mx-4 mb-2 flex items-center justify-between gap-3 rounded-lg bg-secondary/70 px-3 py-1.5 text-xs">
-          <span className="font-medium text-foreground">
+        <div className="mx-4 mb-2.5 flex items-center justify-between gap-3 rounded-[10px] border border-oled-border bg-oled-elevated px-3 py-1.5 text-xs">
+          <span className="font-medium text-oled-foreground">
             {tr('Bend Target:', '벤딩 목표:')} +{currentNote.bendCents} cents ({currentNote.bendCents >= 200 ? tr('Whole Step', '온음') : tr('Half Step', '반음')})
           </span>
           <div className="flex items-center gap-2">
-            <div className="h-2 w-28 overflow-hidden rounded-full bg-border">
+            <div className="h-2 w-28 overflow-hidden rounded-full bg-white/15">
               <motion.div
                 className={`h-full rounded-full ${
-                  activeBendProgress?.onTarget ? 'bg-emerald-600' : 'bg-primary'
+                  activeBendProgress?.onTarget ? 'bg-emerald-500' : 'bg-primary'
                 }`}
                 animate={{ width: `${activeBendProgress?.pct ?? 0}%` }}
                 transition={STUDIO_SPRING}
               />
             </div>
-            <span className="font-mono text-[11px] tabular-nums text-muted-foreground">
+            <span className="font-mono text-[11px] tabular-nums text-oled-muted">
               +{activeBendProgress?.centsRaised ?? 0}c
             </span>
           </div>
         </div>
       )}
 
-      {/* Integrated Bottom Player Bar (Dribbble Reference Video Player Bar Style) */}
-      <div className="flex flex-wrap items-center justify-between gap-3 border-t border-border bg-card px-4 py-2.5">
+      {/* Integrated Recessed OLED Bottom Player Bar */}
+      <div className="flex flex-wrap items-center justify-between gap-3 border-t border-oled-border bg-oled-elevated/85 px-4 py-2.5">
         <div className="flex items-center gap-2">
-          <Button
-            type="button"
-            size="icon-sm"
-            variant="ghost"
-            onClick={onReset}
-            title={tr('Restart', '처음으로')}
-          >
-            <RotateCcw className="w-3.5 h-3.5" />
-          </Button>
-          <Button
-            type="button"
-            size="icon-sm"
-            variant={isPlaying ? 'secondary' : 'default'}
-            className="rounded-full"
-            onClick={onTogglePlay}
-          >
-            {isPlaying ? <Pause className="w-3.5 h-3.5" /> : <Play className="w-3.5 h-3.5" />}
-          </Button>
-          <span className="font-mono text-xs tabular-nums text-muted-foreground ml-1">
+          <Hint content={tr('Restart', '처음으로')} side="top">
+            <Button
+              type="button"
+              size="icon-sm"
+              variant="oled"
+              className="rounded-full"
+              onClick={onReset}
+            >
+              <RotateCcw className="w-3.5 h-3.5" />
+            </Button>
+          </Hint>
+          <Hint content={isPlaying ? tr('Pause', '일시정지') : tr('Play', '재생')} kbd="Space" side="top">
+            <Button
+              type="button"
+              size="icon-sm"
+              variant={isPlaying ? 'oled' : 'signal'}
+              className="rounded-full"
+              onClick={onTogglePlay}
+            >
+              {isPlaying ? <Pause className="w-3.5 h-3.5" /> : <Play className="w-3.5 h-3.5" />}
+            </Button>
+          </Hint>
+          <span className="font-mono text-xs tabular-nums text-oled-muted ml-1">
             {countInState && countInState.remaining > 0
               ? tr(`Count -${countInState.remaining}`, `예비 -${countInState.remaining}`)
               : `${currentBeat.toFixed(0)} / ${totalBeats}`}
@@ -804,7 +836,7 @@ export function ElectricFretboard({
         </div>
 
         {/* Clean Progress Track */}
-        <div className="flex-1 min-w-[120px] max-w-md h-1.5 rounded-full bg-secondary overflow-hidden">
+        <div className="flex-1 min-w-[120px] max-w-md h-1.5 rounded-full bg-white/12 overflow-hidden">
           <div
             className="h-full bg-primary rounded-full transition-[width] duration-75"
             style={{ width: `${progressPct}%` }}
@@ -822,7 +854,7 @@ export function ElectricFretboard({
               className="w-20"
               onValueChange={(v) => onBpmChange(Array.isArray(v) ? v[0] : Number(v))}
             />
-            <span className="font-mono text-xs tabular-nums text-foreground font-medium w-14 text-right">
+            <span className="font-mono text-xs tabular-nums text-oled-foreground font-medium min-w-[64px] whitespace-nowrap text-right">
               {bpm} BPM
             </span>
           </div>
@@ -834,7 +866,7 @@ export function ElectricFretboard({
                 if (v) onAmpPresetChange(v as AmpPreset);
               }}
             >
-              <SelectTrigger className="h-7 w-[108px] text-xs">
+              <SelectTrigger className="h-7 w-[108px] text-xs border-oled-border bg-oled text-oled-foreground dark:bg-oled">
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>

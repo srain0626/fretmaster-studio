@@ -4,6 +4,7 @@ import React from 'react';
 import {
   Dialog,
   DialogContent,
+  DialogDescription,
   DialogFooter,
   DialogHeader,
   DialogTitle,
@@ -41,17 +42,23 @@ export function MasteryReportDialog({
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="sm:max-w-md">
         <DialogHeader>
-          <DialogTitle className="flex items-center justify-between text-base font-semibold">
+          <DialogTitle className="flex items-center justify-between text-base pr-6">
             <span className="flex items-center gap-2">
               {telemetry.passed && <CheckCircle2 className="w-5 h-5 text-primary" />}
               {telemetry.passed
                 ? tr('Stage Passed!', '단계를 통과했어요')
                 : tr('Almost There · Keep Going', '조금만 더 연습해 볼까요')}
             </span>
-            <Badge variant={telemetry.passed ? 'default' : 'secondary'} className="font-mono">
+            <Badge variant={telemetry.passed ? 'signal' : 'secondary'} className="font-mono">
               {telemetry.grade}
             </Badge>
           </DialogTitle>
+          <DialogDescription className="sr-only">
+            {tr(
+              'Session mastery score, pitch and timing accuracy, and weak bars to loop.',
+              '시험 종합 점수, 음정·박자 정확도 및 취약 마디 반복 옵션을 확인합니다.'
+            )}
+          </DialogDescription>
         </DialogHeader>
 
         <div className="space-y-4">
@@ -129,6 +136,7 @@ export function MasteryReportDialog({
           {telemetry.passed && hasNextLesson && (
             <Button
               type="button"
+              variant="signal"
               onClick={() => {
                 onOpenChange(false);
                 onNextLesson();

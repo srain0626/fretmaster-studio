@@ -1,5 +1,5 @@
 import type { Metadata } from "next";
-import { JetBrains_Mono, Plus_Jakarta_Sans } from "next/font/google";
+import { IBM_Plex_Mono, Plus_Jakarta_Sans } from "next/font/google";
 import { GoogleAnalytics } from "@next/third-parties/google";
 import "pretendard/dist/web/variable/pretendardvariable-dynamic-subset.css";
 import { TooltipProvider } from "@/components/ui/tooltip";
@@ -17,7 +17,7 @@ const plusJakarta = Plus_Jakarta_Sans({
   display: "swap",
 });
 
-const jetbrainsMono = JetBrains_Mono({
+const ibmPlexMono = IBM_Plex_Mono({
   variable: "--font-mono",
   subsets: ["latin"],
   weight: ["400", "500", "600", "700"],
@@ -171,7 +171,7 @@ export default function RootLayout({
     <html
       lang="en"
       suppressHydrationWarning
-      className={`${plusJakarta.variable} ${jetbrainsMono.variable} h-full antialiased`}
+      className={`${plusJakarta.variable} ${ibmPlexMono.variable} h-full antialiased`}
     >
       <head>
         {!GA_ID && GTM_ID && (
@@ -189,7 +189,7 @@ export default function RootLayout({
           dangerouslySetInnerHTML={{ __html: JSON.stringify(JSON_LD) }}
         />
       </head>
-      <body className="min-h-full flex flex-col bg-background text-foreground font-sans selection:bg-primary/15 selection:text-foreground">
+      <body className="min-h-full flex flex-col bg-background text-foreground font-sans selection:bg-primary selection:text-primary-foreground">
         {!GA_ID && GTM_ID && (
           <noscript>
             <iframe
@@ -205,7 +205,7 @@ export default function RootLayout({
           <AuthProvider>
             <BugReportProvider>
               <PageViewTracker />
-              <TooltipProvider delay={200}>{children}</TooltipProvider>
+              <TooltipProvider delay={160}>{children}</TooltipProvider>
             </BugReportProvider>
           </AuthProvider>
         </LocaleProvider>
